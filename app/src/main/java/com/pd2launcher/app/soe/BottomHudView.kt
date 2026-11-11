@@ -97,6 +97,7 @@ internal class BottomHudView(context: Context) : View(context) {
             val xp = stats?.levelProgress
             if (xp != null && xp > 0f) {
                 val right = xpWindow.left + xpWindow.width() * xp
+                fill.color = Color.WHITE // opaque: the shader takes the paint's alpha
                 fill.shader = LinearGradient(0f, xpWindow.top, 0f, xpWindow.bottom,
                     intArrayOf(Color.rgb(250, 226, 150), Color.rgb(206, 166, 64), Color.rgb(150, 112, 36)),
                     floatArrayOf(0f, 0.35f, 1f), Shader.TileMode.CLAMP)
@@ -354,7 +355,7 @@ internal class BottomHudView(context: Context) : View(context) {
         val TAB_TITLES = listOf("Map", "Inventory", "Character", "Skills", "Quests")
 
         /** Screen pixels per automap pixel in the map window. */
-        const val MAP_SCALE = 0.75f
+        const val MAP_SCALE = 1.0f
 
         /** A cell's position is its picture's corner; its middle is about this far in. */
         const val CELL_CENTRE_X = 8f
