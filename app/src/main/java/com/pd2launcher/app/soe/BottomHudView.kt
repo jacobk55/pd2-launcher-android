@@ -127,6 +127,7 @@ internal class BottomHudView(context: Context) : View(context) {
                 if (automap != null) drawAutomap(canvas, automap)
                 else if (f != null) canvas.drawBitmap(f.map, null, fitted(f.map.width.toFloat(), f.map.height.toFloat(), panel), smooth)
             }
+            1 -> drawInventory(canvas, f)
             2 -> drawCharacter(canvas, stats)
             else -> {
                 text.textSize = 30f
@@ -183,6 +184,48 @@ internal class BottomHudView(context: Context) : View(context) {
             line.strokeWidth = 2f
             canvas.drawLine(orb.cx - half, y, orb.cx + half, y, line)
         }
+    }
+
+    /**
+     * The inventory page: the grid (10 x 8, more if an item lies beyond it) with each item's own
+     * picture from the game's archives at its place; an item without one shows its code.
+     */
+    private fun drawInventory(canvas: Canvas, f: BottomHud.Frame?) {
+        val items = f?.inventory
+        if (items == null) {
+            text.textSize = 24f
+            label(canvas, "reading the inventory", panel.centerX(), panel.centerY(), Color.rgb(150, 138, 116))
+            return
+        }
+        val cols = maxOf(INV_COLS, items.maxOfOrNull { it.x + it.width } ?: 0)
+        val rows = maxOf(INV_ROWS, items.maxOfOrNull { it.y + it.height } ?: 0)
+        val cell = min((panel.width() - 20f) / cols, 44f)
+        val left = panel.centerX() - cell * cols / 2
+        val top = panel.top + 70f
+        text.textSize = 28f
+        label(canvas, "INVENTORY", panel.centerX(), panel.top + 44f, Color.rgb(226, 206, 156))
+        fill.color = Color.argb(150, 6, 6, 10)
+        canvas.drawRect(left, top, left + cell * cols, top + cell * rows, fill)
+        line.color = Color.argb(90, 150, 130, 100)
+        line.strokeWidth = 1f
+        for (c in 0..cols) canvas.drawLine(left + c * cell, top, left + c * cell, top + rows * cell, line)
+        for (r in 0..rows) canvas.drawLine(left, top + r * cell, left + cols * cell, top + r * cell, line)
+        val pictures = f.pictures
+        for (item in items) {
+            val box = RectF(left + item.x * cell, top + item.y * cell, left + (item.x + item.width) * cell, top + (item.y + item.height) * cell)
+            fill.color = Color.argb(70, 70, 80, 140)
+            canvas.drawRect(box.left + 1f, box.top + 1f, box.right - 1f, box.bottom - 1f, fill)
+            val picture = pictures?.get(item.picture)
+            if (picture != null) {
+                canvas.drawBitmap(picture, null, fitted(picture.width.toFloat(), picture.height.toFloat(), box), smooth)
+            } else {
+                text.textSize = 16f
+                label(canvas, item.code, box.centerX(), box.centerY() + 6f, Color.rgb(220, 210, 190))
+            }
+        }
+        text.textSize = 22f
+        val gold = f.stats?.all?.get(14)
+        if (gold != null) label(canvas, "Gold  $gold", panel.centerX(), top + rows * cell + 40f, Color.rgb(232, 200, 110))
     }
 
     /** The character page: the game's numbers for the character, from its memory. */
@@ -303,6 +346,9 @@ internal class BottomHudView(context: Context) : View(context) {
 
         /** A rectangle of the 1024 x 890 template, in the art's pixels. */
         fun t(l: Int, t: Int, r: Int, b: Int) = RectF(l * K, t * K + TOP, r * K, b * K + TOP)
+
+        const val INV_COLS = 10
+        const val INV_ROWS = 8
 
         val TABS = listOf("MAP", "INV", "CHAR", "SKILL", "QUEST")
         val TAB_TITLES = listOf("Map", "Inventory", "Character", "Skills", "Quests")

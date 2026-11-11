@@ -22,10 +22,98 @@ import java.nio.ByteOrder
  * Any failure (no game yet, a loading screen, another version) reads as null: the HUD falls back
  * to what it sees in the picture.
  */
-class GameMemory private constructor(private val pid: Int, private val client: Long) {
+class GameMemory private constructor(
+    private val pid: Int,
+    private val client: Long,
+    /** The Diablo II folder the game runs from (its archives are there), when known. */
+    val gameFolder: File?,
+) {
     private val mem = RandomAccessFile("/proc/$pid/mem", "r")
-    private var expTable: LongArray? = null
-    private var expSearched = false
+    @Volatile private var expTable: LongArray? = null
+    @Volatile private var itemsTxt: Long = 0L
+
+    // The tables are looked for once, away from the HUD's frames: a search reads the game's
+    // writable memory and can take a while.
+    init {
+        Thread({
+            try {
+                expTable = findExperienceTable()
+                Log.i(TAG, "experience table: ${expTable?.take(5)}")
+                itemsTxt = findItemsTxt()
+                Log.i(TAG, "item table at ${itemsTxt.toString(16)}")
+            } catch (e: Exception) {
+                Log.w(TAG, "table search", e)
+            }
+        }, "pd2-gamememory-search").apply { isDaemon = true }.start()
+    }
+
+    /** An item in the inventory: its grid place and size, and its picture's file name. */
+    data class Item(val x: Int, val y: Int, val width: Int, val height: Int, val code: String, val picture: String)
+
+    /**
+     * The player's inventory (page 0), from its item list: unit + 0x60 the inventory, + 0x0C its
+     * first item; an item's + 0x04 its row in the item table (0x1A8-byte records: + 0x20 the
+     * picture, + 0x40 a unique's, + 0x60 a set item's, + 0x80 the code, + 0x10F/0x110 the size),
+     * + 0x14 its data (+ 0x00 the quality, + 0x45 the page, + 0x64 the next item), + 0x2C its
+     * grid place (+ 0x0C x, + 0x10 y). Null until the item table is found.
+     */
+    fun inventory(): List<Item>? = try {
+        val table = itemsTxt
+        val player = u32(client + PLAYER_UNIT)
+        if (table == 0L || player == 0L) null else {
+            val inv = u32(player + 0x60)
+            val out = ArrayList<Item>()
+            var item = if (inv == 0L) 0L else u32(inv + 0x0C)
+            var guard = 0
+            while (item != 0L && guard++ < 512) {
+                val txt = u32(item + 4)
+                val data = u32(item + 0x14)
+                if (data == 0L) break
+                val page = readBytes(data + 0x45, 1)[0].toInt() and 0xFF
+                if (page == 0 && txt < 4096) {
+                    val rec = readBytes(table + txt * ITEM_ROW, ITEM_ROW.toInt())
+                    val quality = u32(data)
+                    val path = u32(item + 0x2C)
+                    val base = cstr(rec, 0x20)
+                    val special = when (quality) {
+                        7L -> cstr(rec, 0x40)
+                        5L -> cstr(rec, 0x60)
+                        else -> ""
+                    }
+                    out += Item(
+                        x = u32(path + 0x0C).toInt(), y = u32(path + 0x10).toInt(),
+                        width = rec[0x10F].toInt() and 0xFF, height = rec[0x110].toInt() and 0xFF,
+                        code = String(rec, 0x80, 4, Charsets.ISO_8859_1).trim(),
+                        picture = special.ifEmpty { base },
+                    )
+                }
+                item = u32(data + 0x64)
+            }
+            out
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun cstr(b: ByteArray, at: Int): String {
+        var end = at
+        while (end < at + 32 && b[end] != 0.toByte()) end++
+        return String(b, at, end - at, Charsets.ISO_8859_1)
+    }
+
+    /** The item table: found by its minor healing potion's record ("invhp1" and code "hp1 "). */
+    private fun findItemsTxt(): Long {
+        val needle = byteArrayOf('i'.code.toByte(), 'n'.code.toByte(), 'v'.code.toByte(), 'h'.code.toByte(), 'p'.code.toByte(), '1'.code.toByte(), 0)
+        val code = "hp1 ".toByteArray(Charsets.ISO_8859_1)
+        val hit = scan(needle) { at -> readBytes(at + 0x60, 4).contentEquals(code) } ?: return 0L
+        var start = hit - 0x20
+        fun plausible(rec: Long) = try {
+            val b = readBytes(rec + 0x20, 4)
+            b[0] == 'i'.code.toByte() && b[1] == 'n'.code.toByte() && b[2] == 'v'.code.toByte()
+        } catch (_: Exception) { false }
+        while (plausible(start - ITEM_ROW)) start -= ITEM_ROW
+        return start
+    }
 
     data class Stats(
         val life: Int, val maxLife: Int, val mana: Int, val maxMana: Int, val level: Int, val experience: Long,
@@ -132,11 +220,6 @@ class GameMemory private constructor(private val pid: Int, private val client: L
     }
 
     private fun progress(level: Int, experience: Long): Float? {
-        if (!expSearched) {
-            expSearched = true
-            expTable = findExperienceTable()
-            Log.i(TAG, "experience table: ${expTable?.take(5)}")
-        }
         val table = expTable ?: return null
         if (level < 1 || level >= table.size) return if (level >= table.size) 1f else null
         val from = table[level - 1]
@@ -148,28 +231,33 @@ class GameMemory private constructor(private val pid: Int, private val client: L
     /** The levels' start experience, level 1 first; found in the game's writable memory. */
     private fun findExperienceTable(): LongArray? {
         val pattern = ByteBuffer.allocate(28).order(ByteOrder.LITTLE_ENDIAN).apply { repeat(7) { putInt(500) } }.array()
+        val row500 = scan(pattern) { at -> u32(at - ROW) == 0L && u32(at + ROW) == 1500L } ?: return null
+        val levels = ArrayList<Long>()
+        var row = row500 - ROW
+        while (levels.size < 128) {
+            val v = u32(row)
+            if (levels.isNotEmpty() && v <= levels.last()) break
+            levels += v
+            row += ROW
+        }
+        return levels.toLongArray()
+    }
+
+    /** The first place in the game's writable memory holding [pattern] where [check] agrees. */
+    private fun scan(pattern: ByteArray, check: (Long) -> Boolean): Long? {
         for ((start, end) in writableRegions()) {
             if (end - start > 64L shl 20) continue
             var at = start
             val chunk = 1 shl 20
             while (at < end) {
-                val n = minOf(chunk.toLong() + 32, end - at).toInt()
+                val n = minOf(chunk.toLong() + pattern.size, end - at).toInt()
                 val bytes = try { readBytes(at, n) } catch (_: Exception) { break }
-                val i = indexOf(bytes, pattern)
-                if (i >= 0) {
-                    val row500 = at + i
-                    val first = row500 - ROW
-                    if (u32(first) == 0L && u32(row500 + ROW) == 1500L) {
-                        val levels = ArrayList<Long>()
-                        var row = first
-                        while (levels.size < 128) {
-                            val v = u32(row)
-                            if (levels.isNotEmpty() && v <= levels.last()) break
-                            levels += v
-                            row += ROW
-                        }
-                        return levels.toLongArray()
-                    }
+                var from = 0
+                while (true) {
+                    val i = indexOf(bytes, pattern, from)
+                    if (i < 0) break
+                    if (try { check(at + i) } catch (_: Exception) { false }) return at + i
+                    from = i + 1
                 }
                 at += chunk
             }
@@ -185,8 +273,10 @@ class GameMemory private constructor(private val pid: Int, private val client: L
             if (b > 0x7FFF0000L) null else a to b
         }
 
-    private fun indexOf(hay: ByteArray, needle: ByteArray): Int {
-        outer@ for (i in 0..hay.size - needle.size) {
+    private fun indexOf(hay: ByteArray, needle: ByteArray, from: Int = 0): Int {
+        val first = needle[0]
+        outer@ for (i in from..hay.size - needle.size) {
+            if (hay[i] != first) continue
             for (j in needle.indices) if (hay[i + j] != needle[j]) continue@outer
             return i
         }
@@ -213,6 +303,7 @@ class GameMemory private constructor(private val pid: Int, private val client: L
         private const val AUTOMAP_LAYER_113C = 0x11CF28L
         private const val MAX_CELLS = 30000
         private const val ROW = 32L
+        private const val ITEM_ROW = 0x1A8L
 
         /** Stats that can go below zero: the resistances. */
         private val SIGNED = setOf(39, 41, 43, 45)
@@ -224,13 +315,15 @@ class GameMemory private constructor(private val pid: Int, private val client: L
                 val cmd = try { File(p, "cmdline").readText() } catch (_: Exception) { continue }
                 if (!cmd.contains("Game.exe", ignoreCase = true)) continue
                 val pid = p.name.toInt()
-                val client = try {
-                    File(p, "maps").useLines { lines ->
-                        lines.firstOrNull { it.contains("D2Client.dll", ignoreCase = true) }?.substringBefore('-')?.toLong(16)
-                    }
+                val line = try {
+                    File(p, "maps").useLines { lines -> lines.firstOrNull { it.contains("D2Client.dll", ignoreCase = true) } }
                 } catch (_: Exception) { null } ?: continue
+                val client = line.substringBefore('-').toLongOrNull(16) ?: continue
+                // The DLL's folder (PD2's ProjectD2), and the Diablo II folder around it.
+                val dll = line.indexOf('/').takeIf { it >= 0 }?.let { File(line.substring(it).trim()).parentFile }
+                val folder = if (dll != null && dll.name.equals("ProjectD2", ignoreCase = true)) dll.parentFile else dll
                 return try {
-                    GameMemory(pid, client).also { Log.i(TAG, "game pid $pid, D2Client at ${client.toString(16)}") }
+                    GameMemory(pid, client, folder).also { Log.i(TAG, "game pid $pid, D2Client at ${client.toString(16)}") }
                 } catch (e: Exception) {
                     Log.w(TAG, "cannot read game $pid", e)
                     null

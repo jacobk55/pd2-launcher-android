@@ -214,6 +214,9 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
             var logged = 0L
             var memory: GameMemory? = null
             var lookedForGame = 0L
+            var pictures: ItemPictures? = null
+            var inventory: List<GameMemory.Item>? = null
+            var inventoryRead = 0L
             while (running) {
                 val started = System.nanoTime()
                 try {
@@ -233,14 +236,24 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
                         val open = memory
                         if (open != null && !open.alive) {
                             open.close()
+                            pictures = null
                             memory = null
                         }
                         if (memory == null && started - lookedForGame > 2_000_000_000L) {
                             lookedForGame = started
                             memory = GameMemory.open()
+                            pictures = memory?.gameFolder?.let { ItemPictures.open(it) }
                         }
                         f.stats = memory?.stats()
                         f.automap = memory?.automap(started)
+                        // The inventory, twice a second; its pictures decoded here, not while drawing.
+                        if (started - inventoryRead > 500_000_000L) {
+                            inventoryRead = started
+                            inventory = memory?.inventory()
+                            inventory?.forEach { pictures?.get(it.picture) }
+                        }
+                        f.inventory = inventory
+                        f.pictures = pictures
                         if (started - logged > 10_000_000_000L) {
                             logged = started
                             Log.i(TAG, "screen ${w}x$h direct=${shown != null} life=${f.life} mana=${f.mana} stats=${f.stats?.let { "${it.life}/${it.maxLife} ${it.mana}/${it.maxMana} level ${it.level} str ${it.all[0]}" }} xp=${f.stats?.levelProgress}")
@@ -279,6 +292,8 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
         @Volatile var mana = 0f
         @Volatile var stats: GameMemory.Stats? = null
         @Volatile var automap: GameMemory.Automap? = null
+        @Volatile var inventory: List<GameMemory.Item>? = null
+        @Volatile var pictures: ItemPictures? = null
         private val row = IntArray(maxOf(screenWidth, 1))
 
         fun matches(w: Int, h: Int) = w == screenWidth && h == screenHeight
