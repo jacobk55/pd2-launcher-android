@@ -45,7 +45,13 @@ jobs:
           key: pd2test-debug-keystore
 
       - name: Build
-        run: PD2_TEST=1 ./build.sh app
+        run: |
+          set -o pipefail
+          if ! PD2_TEST=1 ./build.sh app 2>&1 | tee "$RUNNER_TEMP/build.log"; then
+            # The compiler's errors as annotations, readable without the full log.
+            grep -E '^e: |error:|FAILURE|What went wrong' -A2 "$RUNNER_TEMP/build.log" | head -40 | sed 's/^/::error::/'
+            exit 1
+          fi
 
       # The same app as SoE Launcher (com.pd2launcher.app.soe), HUD included, signed with the
       # SoE Launcher's own debug key so it installs over it in place: the key from soe-apk.yml's

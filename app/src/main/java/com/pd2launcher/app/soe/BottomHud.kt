@@ -230,7 +230,11 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
                         }
                         if (shown == null) f.fill(w, h, screen::pixel, ::fromScreen)
                         // The exact numbers from the game's memory; the globes' look stands in without them.
-                        if (memory?.alive == false) { memory.close(); memory = null }
+                        val open = memory
+                        if (open != null && !open.alive) {
+                            open.close()
+                            memory = null
+                        }
                         if (memory == null && started - lookedForGame > 2_000_000_000L) {
                             lookedForGame = started
                             memory = GameMemory.open()
