@@ -45,10 +45,11 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
     data class Parts(val life: Part, val mana: Part, val belt: Part, val map: Part) {
         companion object {
             val DEFAULT = Parts(
-                life = Part(30, 490, 130, 590),
-                mana = Part(938, 490, 1038, 590),
-                belt = Part(556, 566, 682, 598),
-                map = Part(818, 0, 1068, 190),
+                // Measured on the AYN Thor (1920 x 1080 X screen, PD2 with its minimap on).
+                life = Part(33, 507, 109, 579),
+                mana = Part(963, 507, 1039, 579),
+                belt = Part(555, 559, 680, 594),
+                map = Part(861, 17, 1061, 160),
             )
 
             /** [DEFAULT] with whatever [file] sets; a broken file is ignored, one part at a time. */

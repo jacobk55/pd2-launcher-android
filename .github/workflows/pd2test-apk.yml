@@ -47,6 +47,46 @@ jobs:
       - name: Build
         run: PD2_TEST=1 ./build.sh app
 
+      # The same app as SoE Launcher (com.pd2launcher.app.soe), HUD included, signed with the
+      # SoE Launcher's own debug key so it installs over it in place: the key from soe-apk.yml's
+      # cache entry (restore-only, so a missing key is never replaced) or its secret. Without
+      # either, no SoE build. PD2Test's key is set aside meanwhile and put back after.
+      - name: Set PD2Test's key aside
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          cp build/outputs/app-debug.apk "$RUNNER_TEMP/pd2test.apk"
+          mv ~/.cache/pd2-android/debug.keystore "$RUNNER_TEMP/keys/pd2test.keystore"
+
+      - name: SoE Launcher's key from the cache
+        id: soekey
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/pd2-android/debug.keystore
+          key: soe-debug-keystore
+
+      - name: SoE Launcher with the HUD
+        env:
+          KEYSTORE: ${{ secrets.SOE_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          key=~/.cache/pd2-android/debug.keystore
+          if [[ ! -f $key && -n "$KEYSTORE" ]]; then echo "$KEYSTORE" | base64 -d > $key; fi
+          if [[ -f $key ]]; then
+            keytool -list -v -keystore $key -storepass android | grep -i 'SHA256:' || true
+            PD2_SOE=1 ./build.sh app
+            cp build/outputs/app-debug.apk SoE-HUD.apk
+            sha256sum SoE-HUD.apk > SoE-HUD.apk.sha256
+            rm -f $key
+          else
+            echo "::warning::No SoE Launcher key (cache entry or secret): no SoE build"
+          fi
+
+      - name: Put PD2Test's key back
+        if: always()
+        run: |
+          [[ -f "$RUNNER_TEMP/keys/pd2test.keystore" ]] && mv "$RUNNER_TEMP/keys/pd2test.keystore" ~/.cache/pd2-android/debug.keystore || true
+          [[ -f "$RUNNER_TEMP/pd2test.apk" ]] && mkdir -p build/outputs && cp "$RUNNER_TEMP/pd2test.apk" build/outputs/app-debug.apk || true
+
       - name: Pre-release with the APK
         env:
           GH_TOKEN: ${{ github.token }}
@@ -55,5 +95,7 @@ jobs:
           tag="pd2test-${{ github.run_number }}"
           cp build/outputs/app-debug.apk PD2Test.apk
           sha256sum PD2Test.apk > PD2Test.apk.sha256
-          gh release create "$tag" PD2Test.apk PD2Test.apk.sha256 --prerelease --target "${{ github.sha }}" \
+          files="PD2Test.apk PD2Test.apk.sha256"
+          [[ -f SoE-HUD.apk ]] && files="$files SoE-HUD.apk SoE-HUD.apk.sha256"
+          gh release create "$tag" $files --prerelease --target "${{ github.sha }}" \
             --title "PD2Test ${{ github.run_number }}" --notes "Second-screen HUD test build from ${{ github.sha }}."
