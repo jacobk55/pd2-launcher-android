@@ -240,6 +240,7 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
                             memory = GameMemory.open()
                         }
                         f.stats = memory?.stats()
+                        f.automap = memory?.automap(started)
                         if (started - logged > 10_000_000_000L) {
                             logged = started
                             Log.i(TAG, "screen ${w}x$h direct=${shown != null} life=${f.life} mana=${f.mana} stats=${f.stats} xp=${f.stats?.levelProgress}")
@@ -277,6 +278,7 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
         @Volatile var life = 0f
         @Volatile var mana = 0f
         @Volatile var stats: GameMemory.Stats? = null
+        @Volatile var automap: GameMemory.Automap? = null
         private val row = IntArray(maxOf(screenWidth, 1))
 
         fun matches(w: Int, h: Int) = w == screenWidth && h == screenHeight

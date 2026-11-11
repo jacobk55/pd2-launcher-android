@@ -32,6 +32,66 @@ class GameMemory private constructor(private val pid: Int, private val client: L
         var levelProgress: Float? = null
     }
 
+    /**
+     * The explored automap of the player's area: its cells' positions in automap pixels (walls and
+     * floors apart), and the player's position in the same pixels.
+     */
+    class Automap(val layer: Int, val walls: IntArray, val floors: IntArray) {
+        var playerX = 0f
+        var playerY = 0f
+    }
+
+    private var automap: Automap? = null
+    private var automapRead = 0L
+
+    /**
+     * The automap: the cells read again at most once a second (they only grow as the player
+     * explores), the player's position every call. D2Client + 0x11C1C0 holds the current layer in
+     * this build (0x11CF28 in plain 1.13c): {no, saved, floors, walls, objects, extras, next}, each
+     * a tree of cells {saved, WORD cell, short x, short y, WORD weight, less, more}.
+     */
+    fun automap(now: Long): Automap? = try {
+        val player = u32(client + PLAYER_UNIT)
+        if (player == 0L) null else {
+            var map = automap
+            if (map == null || now - automapRead > 1_000_000_000L) {
+                automapRead = now
+                val layer = listOf(AUTOMAP_LAYER, AUTOMAP_LAYER_113C).map { u32(client + it) }.firstOrNull { it != 0L }
+                map = if (layer == null) null else {
+                    val head = read(layer, 28)
+                    Automap(head.getInt(0), cells(head.getInt(12).toLong() and 0xFFFFFFFFL), cells(head.getInt(8).toLong() and 0xFFFFFFFFL))
+                }
+                automap = map
+            }
+            map?.also {
+                val path = u32(player + 0x2C)
+                val x = u16(path + 0x02).toFloat()
+                val y = u16(path + 0x06).toFloat()
+                it.playerX = (x - y) * 1.6f
+                it.playerY = (x + y) * 0.8f
+            }
+        }
+    } catch (e: Exception) {
+        null
+    }
+
+    /** A cell tree's positions, x and y interleaved. */
+    private fun cells(root: Long): IntArray {
+        val out = ArrayList<Int>()
+        val stack = ArrayDeque<Long>()
+        if (root != 0L) stack.addLast(root)
+        while (stack.isNotEmpty() && out.size < MAX_CELLS * 2) {
+            val c = read(stack.removeLast(), 20)
+            out += c.getShort(6).toInt()
+            out += c.getShort(8).toInt()
+            val less = c.getInt(12).toLong() and 0xFFFFFFFFL
+            val more = c.getInt(16).toLong() and 0xFFFFFFFFL
+            if (less != 0L) stack.addLast(less)
+            if (more != 0L) stack.addLast(more)
+        }
+        return out.toIntArray()
+    }
+
     fun close() = try { mem.close() } catch (_: Exception) {}
 
     /** Whether the game process is still there. */
@@ -144,6 +204,9 @@ class GameMemory private constructor(private val pid: Int, private val client: L
     companion object {
         private const val TAG = "pd2-gamememory"
         private const val PLAYER_UNIT = 0x11BBFCL
+        private const val AUTOMAP_LAYER = 0x11C1C0L
+        private const val AUTOMAP_LAYER_113C = 0x11CF28L
+        private const val MAX_CELLS = 30000
         private const val ROW = 32L
 
         /** The app's running game, or null: Game.exe among this user's processes, with D2Client.dll loaded. */

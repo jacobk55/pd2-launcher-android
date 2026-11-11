@@ -77,10 +77,13 @@ internal class BottomHudView(context: Context) : View(context) {
             val stats = f.stats
             stats?.levelProgress?.let { pour(canvas, xpLiquid, xpWindow, it, vertical = false) }
 
-            // The map, as large as its window allows, centred on black.
+            // The map: the game's explored automap from its memory, centred on the player; the
+            // game's own minimap from the picture only when the memory cannot be read.
             fill.color = Color.rgb(8, 8, 10)
             canvas.drawRect(mapWindow, fill)
-            canvas.drawBitmap(f.map, null, fitted(f.map.width.toFloat(), f.map.height.toFloat(), mapWindow), smooth)
+            val automap = f.automap
+            if (automap != null) drawAutomap(canvas, automap)
+            else canvas.drawBitmap(f.map, null, fitted(f.map.width.toFloat(), f.map.height.toFloat(), mapWindow), smooth)
 
             text.textSize = 26f
             val lifeText = stats?.let { "${it.life}/${it.maxLife}" } ?: "${(f.lifeLevel * 100).roundToInt()}%"
@@ -112,6 +115,39 @@ internal class BottomHudView(context: Context) : View(context) {
             label(canvas, "${i + 1}", dst.right - 10f, dst.bottom - 8f, Color.rgb(232, 220, 188))
             slotRects[i].set(ox + dst.left * s, oy + dst.top * s, ox + dst.right * s, oy + dst.bottom * s)
         }
+        canvas.restore()
+    }
+
+    /**
+     * The automap in [mapWindow]: [MAP_SCALE] screen pixels per automap pixel, the player at the
+     * centre. Floors are dim squares, walls bright ones, as the game's own automap reads; the
+     * player is a red diamond.
+     */
+    private fun drawAutomap(canvas: Canvas, map: GameMemory.Automap) {
+        canvas.save()
+        canvas.clipRect(mapWindow)
+        val cx = mapWindow.centerX()
+        val cy = mapWindow.centerY() + 20f
+        fun plot(cells: IntArray, colour: Int, size: Float) {
+            fill.color = colour
+            var i = 0
+            while (i + 1 < cells.size) {
+                val x = cx + (cells[i] + CELL_CENTRE_X - map.playerX) * MAP_SCALE
+                val y = cy + (cells[i + 1] + CELL_CENTRE_Y - map.playerY) * MAP_SCALE
+                if (x > mapWindow.left - size && x < mapWindow.right && y > mapWindow.top - size && y < mapWindow.bottom) {
+                    canvas.drawRect(x, y, x + size, y + size, fill)
+                }
+                i += 2
+            }
+        }
+        plot(map.floors, Color.rgb(58, 56, 64), 5f)
+        plot(map.walls, Color.rgb(222, 206, 150), 4f)
+        fill.color = Color.rgb(235, 50, 35)
+        val d = 9f
+        val marker = android.graphics.Path().apply {
+            moveTo(cx, cy - d); lineTo(cx + d, cy); lineTo(cx, cy + d); lineTo(cx - d, cy); close()
+        }
+        canvas.drawPath(marker, fill)
         canvas.restore()
     }
 
@@ -172,6 +208,13 @@ internal class BottomHudView(context: Context) : View(context) {
     private companion object {
         const val ART_W = 1240f
         const val ART_H = 1080f
+
+        /** Screen pixels per automap pixel in the map window. */
+        const val MAP_SCALE = 0.75f
+
+        /** A cell's position is its picture's corner; its middle is about this far in. */
+        const val CELL_CENTRE_X = 8f
+        const val CELL_CENTRE_Y = 8f
         val OUTLINE = listOf(3f to 3f, 3f to 0f, 0f to 3f, -3f to 0f, 0f to -3f)
     }
 }
