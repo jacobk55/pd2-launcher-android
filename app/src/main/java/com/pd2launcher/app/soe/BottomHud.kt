@@ -297,6 +297,5 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
 
         /** Mana, 0 to 1: exact from memory, or as the globe looks. */
         val manaLevel: Float get() = stats?.let { if (it.maxMana > 0) it.mana.toFloat() / it.maxMana else null } ?: mana
-        }
     }
 }
