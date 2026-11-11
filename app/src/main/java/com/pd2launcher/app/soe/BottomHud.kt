@@ -212,6 +212,8 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
             var sets = arrayOfNulls<Frame>(2)
             var next = 0
             var logged = 0L
+            var memory: GameMemory? = null
+            var lookedForGame = 0L
             while (running) {
                 val started = System.nanoTime()
                 try {
@@ -227,9 +229,16 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
                             f.fill(w, h, frame::pixel, ::fromBuffer)
                         }
                         if (shown == null) f.fill(w, h, screen::pixel, ::fromScreen)
+                        // The exact numbers from the game's memory; the globes' look stands in without them.
+                        if (memory?.alive == false) { memory.close(); memory = null }
+                        if (memory == null && started - lookedForGame > 2_000_000_000L) {
+                            lookedForGame = started
+                            memory = GameMemory.open()
+                        }
+                        f.stats = memory?.stats()
                         if (started - logged > 10_000_000_000L) {
                             logged = started
-                            Log.i(TAG, "screen ${w}x$h direct=${shown != null} life=${f.life} mana=${f.mana}")
+                            Log.i(TAG, "screen ${w}x$h direct=${shown != null} life=${f.life} mana=${f.mana} stats=${f.stats} xp=${f.stats?.levelProgress}")
                         }
                         view.post { view.show(f) }
                     }
@@ -263,6 +272,7 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
         val map = bitmap(parts.map)
         @Volatile var life = 0f
         @Volatile var mana = 0f
+        @Volatile var stats: GameMemory.Stats? = null
         private val row = IntArray(maxOf(screenWidth, 1))
 
         fun matches(w: Int, h: Int) = w == screenWidth && h == screenHeight
@@ -274,6 +284,13 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
             copy(parts.map, w, h, map, row, pixel, argb)
             life = level(lifeGlobe, red = true, row = row)
             mana = level(manaGlobe, red = false, row = row)
+        }
+
+        /** Life, 0 to 1: exact from memory, or as the globe looks. */
+        val lifeLevel: Float get() = stats?.let { if (it.maxLife > 0) it.life.toFloat() / it.maxLife else null } ?: life
+
+        /** Mana, 0 to 1: exact from memory, or as the globe looks. */
+        val manaLevel: Float get() = stats?.let { if (it.maxMana > 0) it.mana.toFloat() / it.maxMana else null } ?: mana
         }
     }
 }

@@ -70,8 +70,12 @@ internal class BottomHudView(context: Context) : View(context) {
 
         val f = frame
         if (f != null) {
-            pour(canvas, lifeLiquid, lifeWindow, f.life, vertical = true)
-            pour(canvas, manaLiquid, manaWindow, f.mana, vertical = true)
+            pour(canvas, lifeLiquid, lifeWindow, f.lifeLevel, vertical = true)
+            pour(canvas, manaLiquid, manaWindow, f.manaLevel, vertical = true)
+            // The experience bar: its glass first (over the art's own gold edges), then the fill.
+            glass(canvas, RectF(xpWindow.left, xpWindow.top - 8f, xpWindow.right, xpWindow.bottom + 8f))
+            val stats = f.stats
+            stats?.levelProgress?.let { pour(canvas, xpLiquid, xpWindow, it, vertical = false) }
 
             // The map, as large as its window allows, centred on black.
             fill.color = Color.rgb(8, 8, 10)
@@ -79,8 +83,15 @@ internal class BottomHudView(context: Context) : View(context) {
             canvas.drawBitmap(f.map, null, fitted(f.map.width.toFloat(), f.map.height.toFloat(), mapWindow), smooth)
 
             text.textSize = 26f
-            label(canvas, "LIFE ${(f.life * 100).roundToInt()}%", mapWindow.left + 90f, mapWindow.top + 34f, Color.rgb(255, 120, 96))
-            label(canvas, "MANA ${(f.mana * 100).roundToInt()}%", mapWindow.right - 90f, mapWindow.top + 34f, Color.rgb(140, 170, 255))
+            val lifeText = stats?.let { "${it.life}/${it.maxLife}" } ?: "${(f.lifeLevel * 100).roundToInt()}%"
+            val manaText = stats?.let { "${it.mana}/${it.maxMana}" } ?: "${(f.manaLevel * 100).roundToInt()}%"
+            label(canvas, "LIFE $lifeText", mapWindow.left + 110f, mapWindow.top + 34f, Color.rgb(255, 120, 96))
+            label(canvas, "MANA $manaText", mapWindow.right - 110f, mapWindow.top + 34f, Color.rgb(140, 170, 255))
+            if (stats != null) {
+                val xp = stats.levelProgress?.let { " ${(it * 1000).roundToInt() / 10f}%" } ?: ""
+                text.textSize = 24f
+                label(canvas, "LEVEL ${stats.level}$xp", xpWindow.centerX(), xpWindow.centerY() + 9f, Color.rgb(255, 240, 200))
+            }
 
             val slotW = f.belt.width / BottomHud.SLOTS.toFloat()
             for (i in 0 until BottomHud.SLOTS) {
@@ -102,6 +113,15 @@ internal class BottomHudView(context: Context) : View(context) {
             slotRects[i].set(ox + dst.left * s, oy + dst.top * s, ox + dst.right * s, oy + dst.bottom * s)
         }
         canvas.restore()
+    }
+
+    /** Empty dark glass over [box]. */
+    private fun glass(canvas: Canvas, box: RectF) {
+        fill.shader = android.graphics.LinearGradient(0f, box.top, 0f, box.bottom,
+            intArrayOf(Color.rgb(6, 6, 8), Color.rgb(34, 36, 42), Color.rgb(16, 17, 21), Color.rgb(5, 5, 6)),
+            floatArrayOf(0f, 0.25f, 0.45f, 1f), android.graphics.Shader.TileMode.CLAMP)
+        canvas.drawRect(box, fill)
+        fill.shader = null
     }
 
     /** [liquid] in [window], filled from the bottom (or the left) to [level], with a bright edge. */
