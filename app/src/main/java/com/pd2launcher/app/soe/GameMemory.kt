@@ -27,7 +27,11 @@ class GameMemory private constructor(private val pid: Int, private val client: L
     private var expTable: LongArray? = null
     private var expSearched = false
 
-    data class Stats(val life: Int, val maxLife: Int, val mana: Int, val maxMana: Int, val level: Int, val experience: Long) {
+    data class Stats(
+        val life: Int, val maxLife: Int, val mana: Int, val maxMana: Int, val level: Int, val experience: Long,
+        /** Every base stat by its id, as the game holds it (items included). */
+        val all: Map<Int, Long> = emptyMap(),
+    ) {
         /** How far into the current level, 0 to 1; null without the experience table. */
         var levelProgress: Float? = null
     }
@@ -109,7 +113,7 @@ class GameMemory private constructor(private val pid: Int, private val client: L
                 for (i in 0 until count) {
                     val layer = raw.getShort(i * 8).toInt() and 0xFFFF
                     val stat = raw.getShort(i * 8 + 2).toInt() and 0xFFFF
-                    if (layer == 0) values[stat] = raw.getInt(i * 8 + 4).toLong() and 0xFFFFFFFFL
+                    if (layer == 0) values[stat] = if (stat in SIGNED) raw.getInt(i * 8 + 4).toLong() else raw.getInt(i * 8 + 4).toLong() and 0xFFFFFFFFL
                 }
                 val maxLife = ((values[7] ?: 0) shr 8).toInt()
                 if (maxLife <= 0) null else Stats(
@@ -119,6 +123,7 @@ class GameMemory private constructor(private val pid: Int, private val client: L
                     maxMana = ((values[9] ?: 0) shr 8).toInt(),
                     level = (values[12] ?: 0).toInt(),
                     experience = values[13] ?: 0,
+                    all = values,
                 ).also { it.levelProgress = progress(it.level, it.experience) }
             }
         }
@@ -208,6 +213,9 @@ class GameMemory private constructor(private val pid: Int, private val client: L
         private const val AUTOMAP_LAYER_113C = 0x11CF28L
         private const val MAX_CELLS = 30000
         private const val ROW = 32L
+
+        /** Stats that can go below zero: the resistances. */
+        private val SIGNED = setOf(39, 41, 43, 45)
 
         /** The app's running game, or null: Game.exe among this user's processes, with D2Client.dll loaded. */
         fun open(): GameMemory? {

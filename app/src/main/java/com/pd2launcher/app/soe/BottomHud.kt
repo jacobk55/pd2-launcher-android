@@ -243,7 +243,7 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
                         f.automap = memory?.automap(started)
                         if (started - logged > 10_000_000_000L) {
                             logged = started
-                            Log.i(TAG, "screen ${w}x$h direct=${shown != null} life=${f.life} mana=${f.mana} stats=${f.stats} xp=${f.stats?.levelProgress}")
+                            Log.i(TAG, "screen ${w}x$h direct=${shown != null} life=${f.life} mana=${f.mana} stats=${f.stats?.let { "${it.life}/${it.maxLife} ${it.mana}/${it.maxMana} level ${it.level} str ${it.all[0]}" }} xp=${f.stats?.levelProgress}")
                         }
                         view.post { view.show(f) }
                     }

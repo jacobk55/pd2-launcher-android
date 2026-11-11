@@ -5,9 +5,12 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.view.MotionEvent
 import android.view.View
@@ -16,38 +19,49 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * The lower screen of [BottomHud]: the stone panel art (`hud_bg`, 1240 x 1080, drawn for the
- * AYN Thor's lower screen) with its windows filled live. The life and mana tubes fill to the
- * game's globes' levels with the art's own liquids, the four belt slots show the game's belt,
- * and the map window shows the game's map. The art is scaled to fit the display, its pixels kept
- * hard.
+ * The lower screen of [BottomHud]: the angel and demon panel art (`hud_bg`, 1240 x 1080, drawn
+ * for the AYN Thor's lower screen) filled live. The angel's red orb is life and the demon's blue
+ * orb mana, their glass going dark above the level (`hud_orb_*_empty`); the plates under them give
+ * the numbers. The five tabs switch the centre panel between the map and the character's pages;
+ * the bar under it is experience, and the four slots at the bottom the belt (a tap drinks).
  */
 internal class BottomHudView(context: Context) : View(context) {
     private var frame: BottomHud.Frame? = null
     private val art: Bitmap = decode(R.drawable.hud_bg)
-    private val lifeLiquid = decode(R.drawable.hud_liquid_life)
-    private val manaLiquid = decode(R.drawable.hud_liquid_mana)
-    private val xpLiquid = decode(R.drawable.hud_liquid_xp)
+    private val lifeEmpty = decode(R.drawable.hud_orb_life_empty)
+    private val manaEmpty = decode(R.drawable.hud_orb_mana_empty)
 
     private val pixel = Paint().apply { isFilterBitmap = false }
     private val smooth = Paint(Paint.FILTER_BITMAP_FLAG)
     private val fill = Paint()
+    private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
         textAlign = Paint.Align.CENTER
     }
-    private val slotRects = Array(BottomHud.SLOTS) { RectF() }
+
+    /** The page the centre panel shows: an index into [TABS]. */
+    private var tab = 0
     private var pressed = -1
 
-    // Where the art's windows are, in its 1240 x 1080 pixels.
-    private val lifeWindow = RectF(116f, 341f, 213f, 973f)
-    private val manaWindow = RectF(1024f, 481f, 1124f, 980f)
-    private val xpWindow = RectF(358f, 936f, 877f, 1009f)
-    private val mapWindow = RectF(392f, 266f, 845f, 818f)
-    private val slotWindows = arrayOf(
-        RectF(419f, 68f, 509f, 150f), RectF(523f, 68f, 613f, 150f),
-        RectF(627f, 68f, 717f, 150f), RectF(731f, 68f, 823f, 150f),
+    // Touch areas in the view's pixels, set as they are drawn.
+    private val slotRects = Array(BottomHud.SLOTS) { RectF() }
+    private val tabRects = Array(TABS.size) { RectF() }
+
+    // The art's parts, in its 1240 x 1080 pixels (measured on the 1024 x 890 template, see [t]).
+    private val lifeOrb = Orb(228.9f, 278.3f, 70.2f, 156f, 206f)
+    private val manaOrb = Orb(1020.8f, 317.1f, 73.9f, 944f, 241f)
+    private val tabWindows = arrayOf(
+        t(337, 57, 399, 118), t(410, 57, 472, 118), t(483, 57, 545, 118), t(556, 57, 618, 118), t(628, 57, 690, 118),
     )
+    private val panel = t(362, 156, 662, 660)
+    private val lifePlate = t(40, 630, 256, 701)
+    private val manaPlate = t(770, 630, 988, 701)
+    private val xpWindow = t(272, 742, 758, 770)
+    private val slotWindows = arrayOf(t(366, 795, 432, 862), t(441, 795, 507, 862), t(517, 795, 583, 862), t(593, 795, 659, 862))
+
+    /** An orb: its glass's centre and radius, and where its empty glass picture goes. */
+    private class Orb(val cx: Float, val cy: Float, val r: Float, val left: Float, val top: Float)
 
     private fun decode(id: Int): Bitmap =
         BitmapFactory.decodeResource(resources, id, BitmapFactory.Options().apply { inScaled = false })
@@ -69,115 +83,184 @@ internal class BottomHudView(context: Context) : View(context) {
         canvas.drawBitmap(art, 0f, 0f, pixel)
 
         val f = frame
+        val stats = f?.stats
         if (f != null) {
-            pour(canvas, lifeLiquid, lifeWindow, f.lifeLevel, vertical = true)
-            pour(canvas, manaLiquid, manaWindow, f.manaLevel, vertical = true)
-            // The experience bar: its glass first (over the art's own gold edges), then the fill.
-            glass(canvas, RectF(xpWindow.left, xpWindow.top - 8f, xpWindow.right, xpWindow.bottom + 8f))
-            val stats = f.stats
-            stats?.levelProgress?.let { pour(canvas, xpLiquid, xpWindow, it, vertical = false) }
+            drain(canvas, lifeOrb, lifeEmpty, f.lifeLevel)
+            drain(canvas, manaOrb, manaEmpty, f.manaLevel)
+            text.textSize = 34f
+            val lifeText = stats?.let { "${it.life} / ${it.maxLife}" } ?: "${(f.lifeLevel * 100).roundToInt()}%"
+            val manaText = stats?.let { "${it.mana} / ${it.maxMana}" } ?: "${(f.manaLevel * 100).roundToInt()}%"
+            label(canvas, "LIFE  $lifeText", lifePlate.centerX(), lifePlate.centerY() + 12f, Color.rgb(240, 110, 90))
+            label(canvas, "MANA  $manaText", manaPlate.centerX(), manaPlate.centerY() + 12f, Color.rgb(130, 160, 255))
 
-            // The map: the game's explored automap from its memory, centred on the player; the
-            // game's own minimap from the picture only when the memory cannot be read.
-            fill.color = Color.rgb(8, 8, 10)
-            canvas.drawRect(mapWindow, fill)
-            val automap = f.automap
-            if (automap != null) drawAutomap(canvas, automap)
-            else canvas.drawBitmap(f.map, null, fitted(f.map.width.toFloat(), f.map.height.toFloat(), mapWindow), smooth)
-
-            text.textSize = 26f
-            val lifeText = stats?.let { "${it.life}/${it.maxLife}" } ?: "${(f.lifeLevel * 100).roundToInt()}%"
-            val manaText = stats?.let { "${it.mana}/${it.maxMana}" } ?: "${(f.manaLevel * 100).roundToInt()}%"
-            label(canvas, "LIFE $lifeText", mapWindow.left + 110f, mapWindow.top + 34f, Color.rgb(255, 120, 96))
-            label(canvas, "MANA $manaText", mapWindow.right - 110f, mapWindow.top + 34f, Color.rgb(140, 170, 255))
+            // Experience.
+            val xp = stats?.levelProgress
+            if (xp != null && xp > 0f) {
+                val right = xpWindow.left + xpWindow.width() * xp
+                fill.shader = LinearGradient(0f, xpWindow.top, 0f, xpWindow.bottom,
+                    intArrayOf(Color.rgb(250, 226, 150), Color.rgb(206, 166, 64), Color.rgb(150, 112, 36)),
+                    floatArrayOf(0f, 0.35f, 1f), Shader.TileMode.CLAMP)
+                canvas.drawRect(xpWindow.left, xpWindow.top, right, xpWindow.bottom, fill)
+                fill.shader = null
+            }
             if (stats != null) {
-                val xp = stats.levelProgress?.let { " ${(it * 1000).roundToInt() / 10f}%" } ?: ""
-                text.textSize = 24f
-                label(canvas, "LEVEL ${stats.level}$xp", xpWindow.centerX(), xpWindow.centerY() + 9f, Color.rgb(255, 240, 200))
+                text.textSize = 26f
+                val percent = xp?.let { "   ${(it * 1000).roundToInt() / 10f}%" } ?: ""
+                label(canvas, "LEVEL ${stats.level}$percent", xpWindow.centerX(), xpWindow.centerY() + 9f, Color.rgb(255, 244, 214))
             }
 
+            // The belt, from the game's picture.
             val slotW = f.belt.width / BottomHud.SLOTS.toFloat()
             for (i in 0 until BottomHud.SLOTS) {
-                val dst = slotWindows[i]
-                fill.color = Color.rgb(10, 10, 12)
-                canvas.drawRect(dst, fill)
+                val dst = RectF(slotWindows[i]).apply { inset(6f, 6f) }
                 val src = Rect((i * slotW).toInt(), 0, ((i + 1) * slotW).toInt(), f.belt.height)
                 canvas.drawBitmap(f.belt, src, fitted(src.width().toFloat(), src.height().toFloat(), dst), smooth)
             }
         }
+
+        // The centre panel's page.
+        canvas.save()
+        canvas.clipRect(panel)
+        when (tab) {
+            0 -> {
+                val automap = f?.automap
+                if (automap != null) drawAutomap(canvas, automap)
+                else if (f != null) canvas.drawBitmap(f.map, null, fitted(f.map.width.toFloat(), f.map.height.toFloat(), panel), smooth)
+            }
+            2 -> drawCharacter(canvas, stats)
+            else -> {
+                text.textSize = 30f
+                label(canvas, TAB_TITLES[tab], panel.centerX(), panel.centerY() - 10f, Color.rgb(226, 206, 156))
+                text.textSize = 22f
+                label(canvas, "coming in a later build", panel.centerX(), panel.centerY() + 26f, Color.rgb(150, 138, 116))
+            }
+        }
+        canvas.restore()
+
+        // Tabs.
+        for (i in TABS.indices) {
+            val w = tabWindows[i]
+            if (i == tab) {
+                fill.color = Color.argb(70, 200, 150, 60)
+                canvas.drawRect(w.left + 5f, w.top + 5f, w.right - 5f, w.bottom - 5f, fill)
+                line.color = Color.rgb(230, 190, 110)
+                line.strokeWidth = 3f
+                canvas.drawRect(w.left + 5f, w.top + 5f, w.right - 5f, w.bottom - 5f, line)
+            }
+            text.textSize = if (TABS[i].length > 4) 17f else 20f
+            label(canvas, TABS[i], w.centerX(), w.centerY() + 7f,
+                if (i == tab) Color.rgb(240, 218, 166) else Color.rgb(170, 156, 130))
+            tabRects[i].set(ox + w.left * s, oy + w.top * s, ox + w.right * s, oy + w.bottom * s)
+        }
+
+        // Slots: the pressed one lit, and their keys.
         for (i in 0 until BottomHud.SLOTS) {
             val dst = slotWindows[i]
             if (i == pressed) {
                 fill.color = Color.argb(110, 255, 230, 160)
                 canvas.drawRect(dst, fill)
             }
-            text.textSize = 22f
-            label(canvas, "${i + 1}", dst.right - 10f, dst.bottom - 8f, Color.rgb(232, 220, 188))
+            text.textSize = 20f
+            label(canvas, "${i + 1}", dst.right - 12f, dst.bottom - 10f, Color.rgb(236, 220, 180))
             slotRects[i].set(ox + dst.left * s, oy + dst.top * s, ox + dst.right * s, oy + dst.bottom * s)
         }
         canvas.restore()
     }
 
+    /** [empty] glass over [orb] above [level] (0 to 1), and a faint line at the level. */
+    private fun drain(canvas: Canvas, orb: Orb, empty: Bitmap, level: Float) {
+        val l = level.coerceIn(0f, 1f)
+        val y = orb.cy + orb.r - 2 * orb.r * l
+        if (l < 1f) {
+            canvas.save()
+            canvas.clipRect(orb.left, orb.top, orb.left + empty.width, y)
+            canvas.drawBitmap(empty, orb.left, orb.top, pixel)
+            canvas.restore()
+        }
+        if (l > 0f && l < 1f) {
+            val half = kotlin.math.sqrt((orb.r * orb.r - (y - orb.cy) * (y - orb.cy)).coerceAtLeast(0f))
+            line.color = Color.argb(110, 255, 255, 255)
+            line.strokeWidth = 2f
+            canvas.drawLine(orb.cx - half, y, orb.cx + half, y, line)
+        }
+    }
+
+    /** The character page: the game's numbers for the character, from its memory. */
+    private fun drawCharacter(canvas: Canvas, stats: GameMemory.Stats?) {
+        if (stats == null) {
+            text.textSize = 24f
+            label(canvas, "waiting for the game", panel.centerX(), panel.centerY(), Color.rgb(150, 138, 116))
+            return
+        }
+        fun v(id: Int) = stats.all[id] ?: 0L
+        val rows = listOf(
+            "Level" to "${stats.level}",
+            "Experience" to "${stats.experience}",
+            "" to "",
+            "Strength" to "${v(0)}",
+            "Dexterity" to "${v(2)}",
+            "Vitality" to "${v(3)}",
+            "Energy" to "${v(1)}",
+            "" to "",
+            "Life" to "${stats.life} / ${stats.maxLife}",
+            "Mana" to "${stats.mana} / ${stats.maxMana}",
+            "" to "",
+            "Fire resist" to "${v(39).toInt()}%",
+            "Cold resist" to "${v(43).toInt()}%",
+            "Lightning resist" to "${v(41).toInt()}%",
+            "Poison resist" to "${v(45).toInt()}%",
+            "" to "",
+            "Gold" to "${v(14)}",
+            "Gold in stash" to "${v(15)}",
+        )
+        text.textSize = 25f
+        var y = panel.top + 50f
+        for ((name, value) in rows) {
+            if (name.isNotEmpty()) {
+                text.textAlign = Paint.Align.LEFT
+                label(canvas, name, panel.left + 24f, y, Color.rgb(198, 182, 146))
+                text.textAlign = Paint.Align.RIGHT
+                label(canvas, value, panel.right - 24f, y, Color.rgb(246, 236, 210))
+                y += 32f
+            } else {
+                y += 14f
+            }
+        }
+        text.textAlign = Paint.Align.CENTER
+    }
+
     /**
-     * The automap in [mapWindow]: [MAP_SCALE] screen pixels per automap pixel, the player at the
+     * The automap in the panel: [MAP_SCALE] screen pixels per automap pixel, the player at the
      * centre. Floors are dim squares, walls bright ones, as the game's own automap reads; the
      * player is a red diamond.
      */
     private fun drawAutomap(canvas: Canvas, map: GameMemory.Automap) {
-        canvas.save()
-        canvas.clipRect(mapWindow)
-        val cx = mapWindow.centerX()
-        val cy = mapWindow.centerY() + 20f
+        val cx = panel.centerX()
+        val cy = panel.centerY()
         fun plot(cells: IntArray, colour: Int, size: Float) {
             fill.color = colour
             var i = 0
             while (i + 1 < cells.size) {
                 val x = cx + (cells[i] + CELL_CENTRE_X - map.playerX) * MAP_SCALE
                 val y = cy + (cells[i + 1] + CELL_CENTRE_Y - map.playerY) * MAP_SCALE
-                if (x > mapWindow.left - size && x < mapWindow.right && y > mapWindow.top - size && y < mapWindow.bottom) {
+                if (x > panel.left - size && x < panel.right && y > panel.top - size && y < panel.bottom) {
                     canvas.drawRect(x, y, x + size, y + size, fill)
                 }
                 i += 2
             }
         }
-        plot(map.floors, Color.rgb(58, 56, 64), 5f)
-        plot(map.walls, Color.rgb(222, 206, 150), 4f)
+        plot(map.floors, Color.rgb(70, 64, 60), 5f)
+        plot(map.walls, Color.rgb(226, 208, 150), 4f)
         fill.color = Color.rgb(235, 50, 35)
         val d = 9f
-        val marker = android.graphics.Path().apply {
+        val marker = Path().apply {
             moveTo(cx, cy - d); lineTo(cx + d, cy); lineTo(cx, cy + d); lineTo(cx - d, cy); close()
         }
         canvas.drawPath(marker, fill)
-        canvas.restore()
-    }
-
-    /** Empty dark glass over [box]. */
-    private fun glass(canvas: Canvas, box: RectF) {
-        fill.shader = android.graphics.LinearGradient(0f, box.top, 0f, box.bottom,
-            intArrayOf(Color.rgb(6, 6, 8), Color.rgb(34, 36, 42), Color.rgb(16, 17, 21), Color.rgb(5, 5, 6)),
-            floatArrayOf(0f, 0.25f, 0.45f, 1f), android.graphics.Shader.TileMode.CLAMP)
-        canvas.drawRect(box, fill)
-        fill.shader = null
-    }
-
-    /** [liquid] in [window], filled from the bottom (or the left) to [level], with a bright edge. */
-    private fun pour(canvas: Canvas, liquid: Bitmap, window: RectF, level: Float, vertical: Boolean) {
-        val l = level.coerceIn(0f, 1f)
-        if (l <= 0f) return
-        canvas.save()
-        if (vertical) canvas.clipRect(window.left, window.bottom - window.height() * l, window.right, window.bottom)
-        else canvas.clipRect(window.left, window.top, window.left + window.width() * l, window.bottom)
-        canvas.drawBitmap(liquid, null, window, pixel)
-        canvas.restore()
-        fill.color = Color.argb(90, 255, 255, 255)
-        if (vertical) {
-            val y = window.bottom - window.height() * l
-            canvas.drawRect(window.left, y, window.right, y + 4f, fill)
-        }
     }
 
     private fun label(canvas: Canvas, s: String, x: Float, y: Float, colour: Int) {
-        text.color = Color.rgb(14, 14, 22)
+        text.color = Color.rgb(8, 6, 6)
         for ((dx, dy) in OUTLINE) canvas.drawText(s, x + dx, y + dy, text)
         text.color = colour
         canvas.drawText(s, x, y, text)
@@ -193,8 +276,13 @@ internal class BottomHudView(context: Context) : View(context) {
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                pressed = slotRects.indexOfFirst { it.contains(event.x, event.y) }
-                if (pressed >= 0) BottomHud.press(pressed)
+                val t = tabRects.indexOfFirst { it.contains(event.x, event.y) }
+                if (t >= 0) {
+                    tab = t
+                } else {
+                    pressed = slotRects.indexOfFirst { it.contains(event.x, event.y) }
+                    if (pressed >= 0) BottomHud.press(pressed)
+                }
                 invalidate()
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
@@ -209,12 +297,22 @@ internal class BottomHudView(context: Context) : View(context) {
         const val ART_W = 1240f
         const val ART_H = 1080f
 
+        /** The template is 1024 x 890; the art is it scaled by this, 1 pixel down. */
+        const val K = 1240f / 1024f
+        const val TOP = 1f
+
+        /** A rectangle of the 1024 x 890 template, in the art's pixels. */
+        fun t(l: Int, t: Int, r: Int, b: Int) = RectF(l * K, t * K + TOP, r * K, b * K + TOP)
+
+        val TABS = listOf("MAP", "INV", "CHAR", "SKILL", "QUEST")
+        val TAB_TITLES = listOf("Map", "Inventory", "Character", "Skills", "Quests")
+
         /** Screen pixels per automap pixel in the map window. */
         const val MAP_SCALE = 0.75f
 
         /** A cell's position is its picture's corner; its middle is about this far in. */
         const val CELL_CENTRE_X = 8f
         const val CELL_CENTRE_Y = 8f
-        val OUTLINE = listOf(3f to 3f, 3f to 0f, 0f to 3f, -3f to 0f, 0f to -3f)
+        val OUTLINE = listOf(2f to 2f, 2f to 0f, 0f to 2f, -2f to 0f, 0f to -2f)
     }
 }
