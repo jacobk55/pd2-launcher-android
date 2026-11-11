@@ -87,11 +87,15 @@ android {
     // Sanctuary of Exile edition: com.pd2launcher.app.soe, "SoE Launcher", on display :3, which
     // installs beside the release app and both development builds.
     val soe = providers.gradleProperty("pd2.soe").map { it.toBoolean() }.getOrElse(false)
-    val devName = if (soe) "SoE Launcher" else if (asFexDev) "PD2 Launcher Dev" else "PD2 Launcher Dev 0.3"
+    // With pd2.test=true (build.sh: PD2_TEST=1) the debug build is "PD2Test",
+    // com.pd2launcher.app.pd2test, on display :4: a test edition beside every other build, with
+    // the second-screen HUD on by default.
+    val pd2Test = providers.gradleProperty("pd2.test").map { it.toBoolean() }.getOrElse(false)
+    val devName = if (pd2Test) "PD2Test" else if (soe) "SoE Launcher" else if (asFexDev) "PD2 Launcher Dev" else "PD2 Launcher Dev 0.3"
     buildTypes {
         getByName("debug") {
-            applicationIdSuffix = if (soe) ".soe" else if (asFexDev) ".dev" else ".dev3"
-            buildConfigField("String", "X_DISPLAY", if (soe) "\":3\"" else if (asFexDev) "\":1\"" else "\":2\"")
+            applicationIdSuffix = if (pd2Test) ".pd2test" else if (soe) ".soe" else if (asFexDev) ".dev" else ".dev3"
+            buildConfigField("String", "X_DISPLAY", if (pd2Test) "\":4\"" else if (soe) "\":3\"" else if (asFexDev) "\":1\"" else "\":2\"")
             resValue("string", "app_name", devName)
             resValue("string", "files_root_title", devName)
         }

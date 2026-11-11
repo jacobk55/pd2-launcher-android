@@ -1,0 +1,59 @@
+# Builds "PD2Test" (com.pd2launcher.app.pd2test), the second-screen HUD test edition, on every
+# push to the pd2test branch, and attaches the APK to the pre-release "pd2test-<run number>".
+# As soe-apk.yml: only the app is compiled; the engine, userland and runtime come unchanged from
+# the official 0.3.2 release APK (checked against its SHA-256). Its debug key has its own cache
+# entry, so it never replaces the SoE Launcher's.
+name: PD2Test APK
+
+on:
+  push:
+    branches: [pd2test]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BASE_TAG: v0.3.2
+  BASE_REPO: Pocketward/pd2-launcher-android
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The engine, userland and runtime from the official release
+        run: |
+          set -euo pipefail
+          version="${BASE_TAG#v}"
+          apk="pd2-launcher-android-$version.apk"
+          base="https://github.com/$BASE_REPO/releases/download/$BASE_TAG"
+          curl -fsSL -o "$RUNNER_TEMP/$apk" "$base/$apk"
+          curl -fsSL -o "$RUNNER_TEMP/$apk.sha256" "$base/$apk.sha256"
+          (cd "$RUNNER_TEMP" && sha256sum -c "$apk.sha256")
+          mkdir -p "$RUNNER_TEMP/base" app/src/main/assets
+          unzip -q "$RUNNER_TEMP/$apk" 'assets/userland/*' 'assets/runtime/*' 'lib/arm64-v8a/libpd2launcher.so' -d "$RUNNER_TEMP/base"
+          cp -r "$RUNNER_TEMP/base/assets/userland" "$RUNNER_TEMP/base/assets/runtime" app/src/main/assets/
+          echo "PD2_ENGINE_BINARY=$RUNNER_TEMP/base/lib/arm64-v8a/libpd2launcher.so" >> "$GITHUB_ENV"
+
+      - name: Debug key from the cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pd2-android/debug.keystore
+          key: pd2test-debug-keystore
+
+      - name: Build
+        run: PD2_TEST=1 ./build.sh app
+
+      - name: Pre-release with the APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="pd2test-${{ github.run_number }}"
+          cp build/outputs/app-debug.apk PD2Test.apk
+          sha256sum PD2Test.apk > PD2Test.apk.sha256
+          gh release create "$tag" PD2Test.apk PD2Test.apk.sha256 --prerelease --target "${{ github.sha }}" \
+            --title "PD2Test ${{ github.run_number }}" --notes "Second-screen HUD test build from ${{ github.sha }}."

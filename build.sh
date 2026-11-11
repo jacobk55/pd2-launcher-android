@@ -56,6 +56,10 @@ fi
 if [[ "${PD2_SOE:-}" == 1 ]]; then
     tasks="-Ppd2.soe=true $tasks"
 fi
+# PD2_TEST=1: the development build is "PD2Test", com.pd2launcher.app.pd2test (pd2.test).
+if [[ "${PD2_TEST:-}" == 1 ]]; then
+    tasks="-Ppd2.test=true $tasks"
+fi
 
 # Without unit tests the test task would only compile the debug variant again.
 [[ -d "$here/app/src/test" ]] || tasks="${tasks/ :app:testDebugUnitTest/}"

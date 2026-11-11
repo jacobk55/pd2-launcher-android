@@ -39,7 +39,7 @@ data class AppSettings(
      * On a second screen apps may present on (the AYN Thor's lower screen), the life and mana
      * globes and the belt ([com.pd2launcher.app.soe.BottomHud]). Off unless the player turns it on.
      */
-    val bottomHud: Boolean = false,
+    val bottomHud: Boolean = BuildConfig.APPLICATION_ID.endsWith(".pd2test"),
     /**
      * The official PD2 launcher's screen the player picked, in lines; null: the display's full
      * size ([GameResolution.forLauncher]). Its own, not the game's: its window needs room.
