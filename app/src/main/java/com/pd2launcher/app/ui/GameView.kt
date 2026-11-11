@@ -174,6 +174,16 @@ fun GameView(
     val virtualPad = remember { VirtualPad { state -> surface?.virtual(state) } }
     val live = running || preview != null
     val app by AppSettingsStore.current.collectAsState()
+    // The globes and belt on the second screen while the game runs, when the player turned it on.
+    DisposableEffect(running, framebuffer, app.bottomHud, preview) {
+        val activity = context.activity()
+        val hud = if (running && preview == null && app.bottomHud && framebuffer != null && activity != null) {
+            com.pd2launcher.app.soe.BottomHud.show(activity, framebuffer)
+        } else {
+            null
+        }
+        onDispose { hud?.dismiss() }
+    }
     // The game's own frame rate (its presents, counted where it sends them), for the counter.
     var fps by remember { mutableStateOf<FpsReading?>(null) }
     LaunchedEffect(surface) {

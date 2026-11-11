@@ -280,6 +280,11 @@ private fun GameTab(
         )
         RowRule()
         ToggleRow(
+            stringResource(R.string.settings_bottom_hud), stringResource(R.string.settings_bottom_hud_body),
+            app.bottomHud, { onAppChange(app.copy(bottomHud = it)) },
+        )
+        RowRule()
+        ToggleRow(
             stringResource(R.string.settings_skip_to_bnet), stringResource(R.string.settings_skip_to_bnet_body),
             launcher?.skipToBnet ?: false, { onCommand(LauncherSettings.skipToBnet(it)) }, enabled,
         )

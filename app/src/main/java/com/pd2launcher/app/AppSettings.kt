@@ -36,6 +36,11 @@ data class AppSettings(
      */
     val pauseInBackground: Boolean = true,
     /**
+     * On a second screen apps may present on (the AYN Thor's lower screen), the life and mana
+     * globes and the belt ([com.pd2launcher.app.soe.BottomHud]). Off unless the player turns it on.
+     */
+    val bottomHud: Boolean = false,
+    /**
      * The official PD2 launcher's screen the player picked, in lines; null: the display's full
      * size ([GameResolution.forLauncher]). Its own, not the game's: its window needs room.
      */
@@ -74,6 +79,7 @@ data class AppSettings(
             LIMIT_FRAME_RATE to null,
             LOW_FRAME_RATE_IN_BACKGROUND to lowFrameRateInBackground,
             PAUSE_IN_BACKGROUND to pauseInBackground,
+            BOTTOM_HUD to bottomHud,
             LAUNCHER_RESOLUTION to launcherResolution,
             DOWNLOADS_NOTICE_ANSWERED to downloadsNoticeAnswered,
             GAME_PLAYED to gamePlayed,
@@ -92,6 +98,7 @@ data class AppSettings(
         private const val LIMITED_FRAME_RATE = 60
         const val LOW_FRAME_RATE_IN_BACKGROUND = "low_frame_rate_in_background"
         const val PAUSE_IN_BACKGROUND = "pause_in_background"
+        const val BOTTOM_HUD = "bottom_hud"
         const val LAUNCHER_RESOLUTION = "launcher_resolution"
         const val DOWNLOADS_NOTICE_ANSWERED = "downloads_notice_answered"
         const val GAME_PLAYED = "game_played"
@@ -109,6 +116,7 @@ data class AppSettings(
                     ?: LIMITED_FRAME_RATE.takeIf { values[FRAME_RATE] == null && values[LIMIT_FRAME_RATE] == true },
                 lowFrameRateInBackground = values[LOW_FRAME_RATE_IN_BACKGROUND] as? Boolean ?: defaults.lowFrameRateInBackground,
                 pauseInBackground = values[PAUSE_IN_BACKGROUND] as? Boolean ?: defaults.pauseInBackground,
+                bottomHud = values[BOTTOM_HUD] as? Boolean ?: defaults.bottomHud,
                 launcherResolution = (values[LAUNCHER_RESOLUTION] as? Int)?.takeIf { it >= GameResolution.MIN_LINES },
                 downloadsNoticeAnswered = values[DOWNLOADS_NOTICE_ANSWERED] as? Boolean ?: defaults.downloadsNoticeAnswered,
                 gamePlayed = values[GAME_PLAYED] as? Boolean ?: defaults.gamePlayed,
