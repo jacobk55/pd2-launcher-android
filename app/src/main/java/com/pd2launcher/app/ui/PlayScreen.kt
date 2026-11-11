@@ -256,6 +256,9 @@ object Play {
     fun update(status: SessionStatus): UpdateView {
         val snapshot = status.snapshot?.takeIf(Onboarding::audited) ?: return UpdateView()
         val client = clientDiffers(snapshot)
+        // Sanctuary of Exile in place: Project Diablo 2's update would put its own files back
+        // (Settings → Game → Sanctuary of Exile updates the mod, and Restore brings PD2 back).
+        if (!client && com.pd2launcher.app.soe.SanctuaryOfExile.active()) return UpdateView()
         if (status.engine != SessionStatus.Engine.CONNECTED || snapshot.host != Host.SUPPORTED ||
             (snapshot.installation != Installation.READY && !client) || snapshot.game == Game.RUNNING ||
             snapshot.activeJob == Job.OFFICIAL_LAUNCHER

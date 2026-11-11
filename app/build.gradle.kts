@@ -83,11 +83,15 @@ android {
     // (build.sh: PD2_DEV_AS_FEX_DEV=1) it builds as com.pd2launcher.app.dev, "PD2 Launcher Dev",
     // display :1, to install over that build: an update in place from it (docs/BUILDING.md).
     val asFexDev = providers.gradleProperty("pd2.asFexDev").map { it.toBoolean() }.getOrElse(false)
-    val devName = if (asFexDev) "PD2 Launcher Dev" else "PD2 Launcher Dev 0.3"
+    // With the Gradle property pd2.soe=true (build.sh: PD2_SOE=1) the debug build is the
+    // Sanctuary of Exile edition: com.pd2launcher.app.soe, "SoE Launcher", on display :3, which
+    // installs beside the release app and both development builds.
+    val soe = providers.gradleProperty("pd2.soe").map { it.toBoolean() }.getOrElse(false)
+    val devName = if (soe) "SoE Launcher" else if (asFexDev) "PD2 Launcher Dev" else "PD2 Launcher Dev 0.3"
     buildTypes {
         getByName("debug") {
-            applicationIdSuffix = if (asFexDev) ".dev" else ".dev3"
-            buildConfigField("String", "X_DISPLAY", if (asFexDev) "\":1\"" else "\":2\"")
+            applicationIdSuffix = if (soe) ".soe" else if (asFexDev) ".dev" else ".dev3"
+            buildConfigField("String", "X_DISPLAY", if (soe) "\":3\"" else if (asFexDev) "\":1\"" else "\":2\"")
             resValue("string", "app_name", devName)
             resValue("string", "files_root_title", devName)
         }

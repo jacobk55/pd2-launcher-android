@@ -31,6 +31,11 @@ data class AppSettings(
      */
     val lowFrameRateInBackground: Boolean = true,
     /**
+     * While the app is away (another app in front, the screen off) for a few seconds, the game is
+     * frozen ([GamePause]); it goes on where it was when the app is back.
+     */
+    val pauseInBackground: Boolean = true,
+    /**
      * The official PD2 launcher's screen the player picked, in lines; null: the display's full
      * size ([GameResolution.forLauncher]). Its own, not the game's: its window needs room.
      */
@@ -68,6 +73,7 @@ data class AppSettings(
             // The older "Limit to 60 fps" switch, now FRAME_RATE's 60: removed at the first save.
             LIMIT_FRAME_RATE to null,
             LOW_FRAME_RATE_IN_BACKGROUND to lowFrameRateInBackground,
+            PAUSE_IN_BACKGROUND to pauseInBackground,
             LAUNCHER_RESOLUTION to launcherResolution,
             DOWNLOADS_NOTICE_ANSWERED to downloadsNoticeAnswered,
             GAME_PLAYED to gamePlayed,
@@ -85,6 +91,7 @@ data class AppSettings(
         /** The frame rate that switch, on, stands for. */
         private const val LIMITED_FRAME_RATE = 60
         const val LOW_FRAME_RATE_IN_BACKGROUND = "low_frame_rate_in_background"
+        const val PAUSE_IN_BACKGROUND = "pause_in_background"
         const val LAUNCHER_RESOLUTION = "launcher_resolution"
         const val DOWNLOADS_NOTICE_ANSWERED = "downloads_notice_answered"
         const val GAME_PLAYED = "game_played"
@@ -101,6 +108,7 @@ data class AppSettings(
                 frameRate = (values[FRAME_RATE] as? Int)?.takeIf { it in FrameRateVote.CAPS }
                     ?: LIMITED_FRAME_RATE.takeIf { values[FRAME_RATE] == null && values[LIMIT_FRAME_RATE] == true },
                 lowFrameRateInBackground = values[LOW_FRAME_RATE_IN_BACKGROUND] as? Boolean ?: defaults.lowFrameRateInBackground,
+                pauseInBackground = values[PAUSE_IN_BACKGROUND] as? Boolean ?: defaults.pauseInBackground,
                 launcherResolution = (values[LAUNCHER_RESOLUTION] as? Int)?.takeIf { it >= GameResolution.MIN_LINES },
                 downloadsNoticeAnswered = values[DOWNLOADS_NOTICE_ANSWERED] as? Boolean ?: defaults.downloadsNoticeAnswered,
                 gamePlayed = values[GAME_PLAYED] as? Boolean ?: defaults.gamePlayed,

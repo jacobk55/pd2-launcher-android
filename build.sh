@@ -51,6 +51,11 @@ esac
 if [[ "${PD2_DEV_AS_FEX_DEV:-}" == 1 ]]; then
     tasks="-Ppd2.asFexDev=true $tasks"
 fi
+# PD2_SOE=1: the development build is the Sanctuary of Exile edition, com.pd2launcher.app.soe
+# (app/build.gradle.kts, pd2.soe).
+if [[ "${PD2_SOE:-}" == 1 ]]; then
+    tasks="-Ppd2.soe=true $tasks"
+fi
 
 # Without unit tests the test task would only compile the debug variant again.
 [[ -d "$here/app/src/test" ]] || tasks="${tasks/ :app:testDebugUnitTest/}"

@@ -247,6 +247,7 @@ private fun GameTab(
         !enabled -> Banner(stringResource(R.string.settings_hint_waiting), Palette.Amber, Modifier.padding(horizontal = 6.dp, vertical = 4.dp))
         else -> Applies(stringResource(R.string.settings_applies_game))
     }
+    Section("Mods: Sanctuary of Exile, Single Player+") { SanctuaryRows() }
     val renderer = launcher?.renderer ?: Renderer.GLIDE
     Section(stringResource(R.string.settings_section_renderer)) {
         OptionRow(
@@ -271,6 +272,11 @@ private fun GameTab(
             stringResource(R.string.settings_background_frame_rate),
             stringResource(R.string.settings_background_frame_rate_body, BackgroundPacer.FPS),
             app.lowFrameRateInBackground, { onAppChange(app.copy(lowFrameRateInBackground = it)) },
+        )
+        RowRule()
+        ToggleRow(
+            stringResource(R.string.settings_pause_in_background), stringResource(R.string.settings_pause_in_background_body),
+            app.pauseInBackground, { onAppChange(app.copy(pauseInBackground = it)) },
         )
         RowRule()
         ToggleRow(

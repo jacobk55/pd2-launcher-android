@@ -317,6 +317,7 @@ class SessionService : Service() {
     override fun onDestroy() {
         running = null
         log("service stopping")
+        gamePause.thaw()
         // The snapshot collection posts to the worker; it ends before the worker shuts down.
         scope.cancel()
         worker.execute {
@@ -932,6 +933,7 @@ class SessionService : Service() {
      * whatever it leaves running ends before the next engine start's check ([endOtherProcesses]).
      */
     private fun wineserverKill() {
+        gamePause.thaw()
         val enginePath = File(applicationInfo.nativeLibraryDir, ENGINE_LIBRARY)
         val loader = paths.loader.path
         try {
@@ -1186,9 +1188,45 @@ class SessionService : Service() {
      * setting; it holds audio focus only while the Game client runs.
      */
     private fun applyBackgroundSound() {
+        applyPause()
         val snapshot = _status.value.snapshot
         val setting = snapshot?.settings?.soundInBackground ?: true
         game.setBackground(!appForeground, setting, gameRunning = snapshot?.game == Game.RUNNING || _status.value.launcherGame)
+    }
+
+    private val gamePause = GamePause(::log, ::owner)
+    private var pauseJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * The game freezes when the app has been away for [GamePause.DELAY_MS] while the game runs
+     * and no engine job does ([AppSettings.pauseInBackground]), and thaws when the app is back
+     * or one of these stops holding. Worker thread only.
+     */
+    private fun applyPause() {
+        val status = _status.value
+        val snapshot = status.snapshot
+        val gameRuns = snapshot?.game == Game.RUNNING || status.launcherGame
+        val wanted = !appForeground && gameRuns && snapshot?.activeJob == null &&
+            AppSettingsStore.load(this).pauseInBackground
+        if (!wanted) {
+            pauseJob?.cancel()
+            pauseJob = null
+            gamePause.thaw()
+            return
+        }
+        if (pauseJob != null || gamePause.isFrozen) return
+        pauseJob = scope.launch {
+            delay(GamePause.DELAY_MS)
+            post {
+                pauseJob = null
+                val now = _status.value
+                if (!appForeground && now.snapshot?.activeJob == null &&
+                    (now.snapshot?.game == Game.RUNNING || now.launcherGame)
+                ) {
+                    gamePause.freeze()
+                }
+            }
+        }
     }
 
     /**
@@ -1241,6 +1279,7 @@ class SessionService : Service() {
     }
 
     private fun stopGameEnvironment() {
+        gamePause.thaw()
         // Wine's processes (wineserver, the wine64-preloaders under FEX) outlive Xvfb otherwise.
         wineserverKill()
         game.stop()

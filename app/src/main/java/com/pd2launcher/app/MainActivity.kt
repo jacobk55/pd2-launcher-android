@@ -153,6 +153,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.pd2launcher.app.soe.SanctuaryOfExile.init(applicationContext)
         if (debuggable) {
             // `am start -n com.pd2launcher.app.dev/com.pd2launcher.app.MainActivity --ez probe true`.
             if (intent.getBooleanExtra("probe", false)) {

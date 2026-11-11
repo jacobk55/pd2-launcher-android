@@ -51,6 +51,8 @@
     <string name="settings_background_frame_rate_body">While you do not see the game (another app in front, the screen off, or these settings open), it draws only %1$d frames a second. This saves battery.</string>
     <string name="settings_skip_to_bnet">Skip to Battle.net</string>
     <string name="settings_skip_to_bnet_body">The game opens on the online screen.</string>
+    <string name="settings_pause_in_background">Pause the game in the background</string>
+    <string name="settings_pause_in_background_body">When you leave the app or the screen turns off for a few seconds, the game freezes and uses no battery. It goes on where it was when you come back. Save before a long break: Android can still end a frozen app.</string>
     <string name="settings_sound_in_background">Sound in background</string>
     <string name="settings_sound_in_background_body">The game keeps its sound when another app is in front.</string>
 
