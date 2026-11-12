@@ -94,38 +94,13 @@ android {
     // com.pd2launcher.app.pd2test, on display :4: a test edition beside every other build, with
     // the second-screen HUD on by default.
     val pd2Test = providers.gradleProperty("pd2.test").map { it.toBoolean() }.getOrElse(false)
-    // With pd2.d2ds=true (build.sh: PD2_D2DS=1) the debug build is "D2DS",
-    // com.pd2launcher.app.d2ds, on display :5: PD2Test as an app of its own for the player's
-    // Thor, with its own launcher picture (ic_d2ds, a stand-in here: the player's picture goes in
-    // on their own computer, never into this repository).
-    val d2ds = providers.gradleProperty("pd2.d2ds").map { it.toBoolean() }.getOrElse(false)
-    val devName = if (d2ds) "D2DS" else if (pd2Test) "PD2Test" else if (soe) "SoE Launcher" else if (asFexDev) "PD2 Launcher Dev" else "PD2 Launcher Dev 0.3"
+    val devName = if (pd2Test) "PD2Test" else if (soe) "SoE Launcher" else if (asFexDev) "PD2 Launcher Dev" else "PD2 Launcher Dev 0.3"
     buildTypes {
         getByName("debug") {
-            applicationIdSuffix = if (d2ds) ".d2ds" else if (pd2Test) ".pd2test" else if (soe) ".soe" else if (asFexDev) ".dev" else ".dev3"
-            buildConfigField("String", "X_DISPLAY", if (d2ds) "\":5\"" else if (pd2Test) "\":4\"" else if (soe) "\":3\"" else if (asFexDev) "\":1\"" else "\":2\"")
-            if (d2ds) {
-                manifestPlaceholders["appIcon"] = "@drawable/ic_d2ds"
-                manifestPlaceholders["appRoundIcon"] = "@drawable/ic_d2ds"
-            }
+            applicationIdSuffix = if (pd2Test) ".pd2test" else if (soe) ".soe" else if (asFexDev) ".dev" else ".dev3"
+            buildConfigField("String", "X_DISPLAY", if (pd2Test) "\":4\"" else if (soe) "\":3\"" else if (asFexDev) "\":1\"" else "\":2\"")
             resValue("string", "app_name", devName)
             resValue("string", "files_root_title", devName)
-        }
-        // D2DS says "Diablo 2 DS" wherever the app says "Project Diablo 2" (the header, the
-        // settings, the messages): every main string naming it, rewritten into a debug resource
-        // folder, which wins over main. The game's own pictures are untouched.
-        if (d2ds) {
-            val out = layout.buildDirectory.dir("generated/d2ds-res").get().asFile
-            val element = Regex("""<string\s+name="[^"]+"[^>]*>[\s\S]*?</string>""")
-            val strings = fileTree("src/main/res/values") { include("*.xml") }.files.sorted()
-                .flatMap { f -> element.findAll(f.readText()).map { it.value }.filter { "Project Diablo 2" in it }.toList() }
-                .map { it.replace("Project Diablo 2", "Diablo 2 DS") }
-            File(out, "values").mkdirs()
-            File(out, "values/strings_d2ds.xml").writeText(
-                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n" +
-                    strings.joinToString("\n") { "    $it" } + "\n</resources>\n",
-            )
-            sourceSets.getByName("debug").res.srcDir(out)
         }
         getByName("release") {
             buildConfigField("String", "X_DISPLAY", "\":0\"")
