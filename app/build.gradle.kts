@@ -111,6 +111,22 @@ android {
             resValue("string", "app_name", devName)
             resValue("string", "files_root_title", devName)
         }
+        // D2DS says "Diablo 2 DS" wherever the app says "Project Diablo 2" (the header, the
+        // settings, the messages): every main string naming it, rewritten into a debug resource
+        // folder, which wins over main. The game's own pictures are untouched.
+        if (d2ds) {
+            val out = layout.buildDirectory.dir("generated/d2ds-res").get().asFile
+            val element = Regex("""<string\s+name="[^"]+"[^>]*>[\s\S]*?</string>""")
+            val strings = fileTree("src/main/res/values") { include("*.xml") }.files.sorted()
+                .flatMap { f -> element.findAll(f.readText()).map { it.value }.filter { "Project Diablo 2" in it }.toList() }
+                .map { it.replace("Project Diablo 2", "Diablo 2 DS") }
+            File(out, "values").mkdirs()
+            File(out, "values/strings_d2ds.xml").writeText(
+                "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n" +
+                    strings.joinToString("\n") { "    $it" } + "\n</resources>\n",
+            )
+            sourceSets.getByName("debug").res.srcDir(out)
+        }
         getByName("release") {
             buildConfigField("String", "X_DISPLAY", "\":0\"")
             signingConfig = signingConfigs.findByName("release")
