@@ -125,7 +125,7 @@ internal class BottomHudView(context: Context) : View(context) {
         when (tab) {
             0 -> {
                 val automap = f?.automap
-                if (automap != null) drawAutomap(canvas, automap)
+                if (automap != null) drawAutomap(canvas, automap, f.pictures)
                 else if (f != null) canvas.drawBitmap(f.map, null, fitted(f.map.width.toFloat(), f.map.height.toFloat(), panel), smooth)
             }
             1 -> drawInventory(canvas, f)
@@ -274,33 +274,41 @@ internal class BottomHudView(context: Context) : View(context) {
     }
 
     /**
-     * The automap in the panel: [MAP_SCALE] screen pixels per automap pixel, the player at the
-     * centre. Floors are dim squares, walls bright ones, as the game's own automap reads; the
-     * player is a red diamond.
+     * The automap in the panel, as the game draws it: each cell its own picture from the game's
+     * `MaxiMap.dc6` at the cell's place, one screen pixel per automap pixel (the game's full map),
+     * centred on the player, who is a red diamond. Cells without a picture are small squares.
      */
-    private fun drawAutomap(canvas: Canvas, map: GameMemory.Automap) {
+    private fun drawAutomap(canvas: Canvas, map: GameMemory.Automap, pictures: ItemPictures?) {
         val cx = panel.centerX()
         val cy = panel.centerY()
-        fun plot(cells: IntArray, colour: Int, size: Float) {
-            fill.color = colour
-            var i = 0
-            while (i + 1 < cells.size) {
-                val x = cx + (cells[i] + CELL_CENTRE_X - map.playerX) * MAP_SCALE
-                val y = cy + (cells[i + 1] + CELL_CENTRE_Y - map.playerY) * MAP_SCALE
-                if (x > panel.left - size && x < panel.right && y > panel.top - size && y < panel.bottom) {
-                    canvas.drawRect(x, y, x + size, y + size, fill)
+        val cells = map.cells
+        fill.color = Color.rgb(200, 186, 140)
+        var i = 0
+        while (i + 2 < cells.size) {
+            val x = cx + (cells[i + 1] - map.playerX) * MAP_SCALE
+            val y = cy + (cells[i + 2] - map.playerY) * MAP_SCALE
+            if (x > panel.left - MARGIN && x < panel.right + MARGIN && y > panel.top - MARGIN && y < panel.bottom + MARGIN) {
+                val cell = pictures?.automapCell(cells[i])
+                if (cell != null) {
+                    val l = x + cell.dx * MAP_SCALE
+                    val t = y + cell.dy * MAP_SCALE
+                    if (MAP_SCALE == 1f) canvas.drawBitmap(cell.bitmap, l, t, pixel)
+                    else canvas.drawBitmap(cell.bitmap, null, RectF(l, t, l + cell.bitmap.width * MAP_SCALE, t + cell.bitmap.height * MAP_SCALE), pixel)
+                } else {
+                    canvas.drawRect(x, y, x + 3f, y + 3f, fill)
                 }
-                i += 2
             }
+            i += 3
         }
-        plot(map.floors, Color.rgb(70, 64, 60), 5f)
-        plot(map.walls, Color.rgb(226, 208, 150), 4f)
         fill.color = Color.rgb(235, 50, 35)
         val d = 9f
         val marker = Path().apply {
             moveTo(cx, cy - d); lineTo(cx + d, cy); lineTo(cx, cy + d); lineTo(cx - d, cy); close()
         }
         canvas.drawPath(marker, fill)
+        line.color = Color.rgb(255, 230, 200)
+        line.strokeWidth = 2f
+        canvas.drawPath(marker, line)
     }
 
     private fun label(canvas: Canvas, s: String, x: Float, y: Float, colour: Int) {
@@ -354,12 +362,11 @@ internal class BottomHudView(context: Context) : View(context) {
         val TABS = listOf("MAP", "INV", "CHAR", "SKILL", "QUEST")
         val TAB_TITLES = listOf("Map", "Inventory", "Character", "Skills", "Quests")
 
-        /** Screen pixels per automap pixel in the map window. */
-        const val MAP_SCALE = 1.0f
+        /** Screen pixels per automap pixel in the map panel: 1, the game's own full map's size. */
+        const val MAP_SCALE = 1f
 
-        /** A cell's position is its picture's corner; its middle is about this far in. */
-        const val CELL_CENTRE_X = 8f
-        const val CELL_CENTRE_Y = 8f
+        /** How far outside the panel a cell's place may be and still have some of its picture in it. */
+        const val MARGIN = 48f
         val OUTLINE = listOf(2f to 2f, 2f to 0f, 0f to 2f, -2f to 0f, 0f to -2f)
     }
 }

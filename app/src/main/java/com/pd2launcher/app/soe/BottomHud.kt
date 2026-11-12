@@ -217,6 +217,7 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
             var pictures: ItemPictures? = null
             var inventory: List<GameMemory.Item>? = null
             var inventoryRead = 0L
+            var warmed: GameMemory.Automap? = null
             while (running) {
                 val started = System.nanoTime()
                 try {
@@ -246,6 +247,15 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
                         }
                         f.stats = memory?.stats()
                         f.automap = memory?.automap(started)
+                        // The map's cell pictures, decoded here once each, not while drawing.
+                        f.automap?.let { map ->
+                            val p = pictures
+                            if (p != null && map !== warmed) {
+                                warmed = map
+                                var i = 0
+                                while (i < map.cells.size) { p.automapCell(map.cells[i]); i += 3 }
+                            }
+                        }
                         // The inventory, twice a second; its pictures decoded here, not while drawing.
                         if (started - inventoryRead > 500_000_000L) {
                             inventoryRead = started

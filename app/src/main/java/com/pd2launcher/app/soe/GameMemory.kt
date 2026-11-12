@@ -182,10 +182,12 @@ class GameMemory private constructor(
     }
 
     /**
-     * The explored automap of the player's area: its cells' positions in automap pixels (walls and
-     * floors apart), and the player's position in the same pixels.
+     * The explored automap of the player's area: its cells, three numbers each (the cell's picture,
+     * a frame of the game's `MaxiMap.dc6`, and its x and y in automap pixels), floors first, then
+     * walls, objects and the rest, as the game draws them; and the player's position in the same
+     * pixels.
      */
-    class Automap(val layer: Int, val walls: IntArray, val floors: IntArray) {
+    class Automap(val layer: Int, val cells: IntArray) {
         var playerX = 0f
         var playerY = 0f
     }
@@ -208,7 +210,9 @@ class GameMemory private constructor(
                 val layer = listOf(AUTOMAP_LAYER, AUTOMAP_LAYER_113C).map { u32(client + it) }.firstOrNull { it != 0L }
                 map = if (layer == null) null else {
                     val head = read(layer, 28)
-                    Automap(head.getInt(0), cells(head.getInt(12).toLong() and 0xFFFFFFFFL), cells(head.getInt(8).toLong() and 0xFFFFFFFFL))
+                    val out = ArrayList<Int>()
+                    for (tree in intArrayOf(8, 12, 16, 20)) cells(head.getInt(tree).toLong() and 0xFFFFFFFFL, out)
+                    Automap(head.getInt(0), out.toIntArray())
                 }
                 automap = map
             }
@@ -224,13 +228,13 @@ class GameMemory private constructor(
         null
     }
 
-    /** A cell tree's positions, x and y interleaved. */
-    private fun cells(root: Long): IntArray {
-        val out = ArrayList<Int>()
+    /** A cell tree's cells into [out]: picture, x, y each. */
+    private fun cells(root: Long, out: ArrayList<Int>) {
         val stack = ArrayDeque<Long>()
         if (root != 0L) stack.addLast(root)
-        while (stack.isNotEmpty() && out.size < MAX_CELLS * 2) {
+        while (stack.isNotEmpty() && out.size < MAX_CELLS * 3) {
             val c = read(stack.removeLast(), 20)
+            out += c.getShort(4).toInt() and 0xFFFF
             out += c.getShort(6).toInt()
             out += c.getShort(8).toInt()
             val less = c.getInt(12).toLong() and 0xFFFFFFFFL
@@ -238,7 +242,6 @@ class GameMemory private constructor(
             if (less != 0L) stack.addLast(less)
             if (more != 0L) stack.addLast(more)
         }
-        return out.toIntArray()
     }
 
     fun close() {
