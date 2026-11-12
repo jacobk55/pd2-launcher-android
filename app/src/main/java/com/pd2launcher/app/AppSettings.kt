@@ -41,6 +41,12 @@ data class AppSettings(
      */
     val bottomHud: Boolean = BuildConfig.APPLICATION_ID.endsWith(".pd2test"),
     /**
+     * With [bottomHud] on, the top screen's bottom row: PD2's controller skill binds and the
+     * stamina in one panel over PD2's bar ([com.pd2launcher.app.soe.TopRow]), PD2's own skill bar
+     * off. Off unless the player turns it on.
+     */
+    val topBar: Boolean = BuildConfig.APPLICATION_ID.endsWith(".pd2test"),
+    /**
      * The official PD2 launcher's screen the player picked, in lines; null: the display's full
      * size ([GameResolution.forLauncher]). Its own, not the game's: its window needs room.
      */
@@ -80,6 +86,7 @@ data class AppSettings(
             LOW_FRAME_RATE_IN_BACKGROUND to lowFrameRateInBackground,
             PAUSE_IN_BACKGROUND to pauseInBackground,
             BOTTOM_HUD to bottomHud,
+            TOP_BAR to topBar,
             LAUNCHER_RESOLUTION to launcherResolution,
             DOWNLOADS_NOTICE_ANSWERED to downloadsNoticeAnswered,
             GAME_PLAYED to gamePlayed,
@@ -99,6 +106,7 @@ data class AppSettings(
         const val LOW_FRAME_RATE_IN_BACKGROUND = "low_frame_rate_in_background"
         const val PAUSE_IN_BACKGROUND = "pause_in_background"
         const val BOTTOM_HUD = "bottom_hud"
+        const val TOP_BAR = "top_bar"
         const val LAUNCHER_RESOLUTION = "launcher_resolution"
         const val DOWNLOADS_NOTICE_ANSWERED = "downloads_notice_answered"
         const val GAME_PLAYED = "game_played"
@@ -117,6 +125,7 @@ data class AppSettings(
                 lowFrameRateInBackground = values[LOW_FRAME_RATE_IN_BACKGROUND] as? Boolean ?: defaults.lowFrameRateInBackground,
                 pauseInBackground = values[PAUSE_IN_BACKGROUND] as? Boolean ?: defaults.pauseInBackground,
                 bottomHud = values[BOTTOM_HUD] as? Boolean ?: defaults.bottomHud,
+                topBar = values[TOP_BAR] as? Boolean ?: defaults.topBar,
                 launcherResolution = (values[LAUNCHER_RESOLUTION] as? Int)?.takeIf { it >= GameResolution.MIN_LINES },
                 downloadsNoticeAnswered = values[DOWNLOADS_NOTICE_ANSWERED] as? Boolean ?: defaults.downloadsNoticeAnswered,
                 gamePlayed = values[GAME_PLAYED] as? Boolean ?: defaults.gamePlayed,

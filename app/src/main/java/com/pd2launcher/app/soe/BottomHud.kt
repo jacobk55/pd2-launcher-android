@@ -42,7 +42,7 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
     }
 
     /** The rectangles read from the picture. */
-    data class Parts(val life: Part, val mana: Part, val belt: Part, val map: Part) {
+    data class Parts(val life: Part, val mana: Part, val belt: Part, val map: Part, val run: Part = RUN) {
         companion object {
             val DEFAULT = Parts(
                 // Measured on the AYN Thor (1920 x 1080 X screen, PD2 with its minimap on).
@@ -50,6 +50,7 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
                 mana = Part(963, 507, 1039, 579),
                 belt = Part(555, 559, 680, 594),
                 map = Part(861, 17, 1061, 160),
+                run = RUN,
             )
 
             /** [DEFAULT] with whatever [file] sets; a broken file is ignored, one part at a time. */
@@ -63,7 +64,7 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
                         val p = Part(a.getInt(0), a.getInt(1), a.getInt(2), a.getInt(3))
                         return if (p.width > 0 && p.height > 0) p else fallback
                     }
-                    Parts(part("life", DEFAULT.life), part("mana", DEFAULT.mana), part("belt", DEFAULT.belt), part("map", DEFAULT.map))
+                    Parts(part("life", DEFAULT.life), part("mana", DEFAULT.mana), part("belt", DEFAULT.belt), part("map", DEFAULT.map), part("run", DEFAULT.run))
                 } catch (e: Exception) {
                     Log.w(TAG, "hud.json", e)
                     DEFAULT
@@ -74,6 +75,12 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
 
     companion object {
         private const val TAG = "pd2-bottomhud"
+
+        /** The run/walk button on PD2's bar (measured on the AYN Thor), for the top screen's row. */
+        internal val RUN = Part(389, 575, 405, 590)
+
+        /** The newest frame while the HUD runs, for the top screen's row ([TopRow]); null otherwise. */
+        @Volatile internal var latest: Frame? = null
         const val FPS = 15
 
         /** How often the HUD looks whether its screen is on again while it is off. */
@@ -201,6 +208,8 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
 
         fun stop() {
             running = false
+            latest = null
+            TopRow.shown = false
             worker.shutdown()
             try {
                 dismiss()
@@ -276,6 +285,12 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
                             inventory?.forEach { pictures?.get(it.picture) }
                         }
                         f.inventory = inventory
+                        // The top screen's row: PD2's controller binds, their icons and the panel, made here.
+                        val binds = memory?.binds()
+                        f.binds = binds
+                        if (binds != null && pictures != null) binds.forEach { pictures?.skillIcon(it) }
+                        TopRow.art(context.resources, pictures)
+                        latest = f
                         f.pictures = pictures
                         if (started - logged > 10_000_000_000L) {
                             logged = started
@@ -311,12 +326,14 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
         private val manaGlobe = bitmap(parts.mana)
         val belt = bitmap(parts.belt)
         val map = bitmap(parts.map)
+        val run = bitmap(parts.run)
         @Volatile var life = 0f
         @Volatile var mana = 0f
         @Volatile var stats: GameMemory.Stats? = null
         @Volatile var automap: GameMemory.Automap? = null
         @Volatile var inventory: List<GameMemory.Item>? = null
         @Volatile var pictures: ItemPictures? = null
+        @Volatile var binds: IntArray? = null
         private val row = IntArray(maxOf(screenWidth, 1))
 
         fun matches(w: Int, h: Int) = w == screenWidth && h == screenHeight
@@ -326,6 +343,7 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
             copy(parts.mana, w, h, manaGlobe, row, pixel, argb)
             copy(parts.belt, w, h, belt, row, pixel, argb)
             copy(parts.map, w, h, map, row, pixel, argb)
+            copy(parts.run, w, h, run, row, pixel, argb)
             life = level(lifeGlobe, red = true, row = row)
             mana = level(manaGlobe, red = false, row = row)
         }

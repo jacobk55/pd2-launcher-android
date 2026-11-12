@@ -50,6 +50,68 @@ internal class ItemPictures private constructor(private val archives: GameArchiv
         return cell
     }
 
+    private val skillIcons = HashMap<Int, Bitmap?>()
+    private val iconFiles = HashMap<String, ByteArray?>()
+    private var skillTables: Pair<ByteArray, ByteArray>? = null
+    private var skillTablesRead = false
+
+    /**
+     * Skill [id]'s icon, as the game shows it: `skills.bin` gives the skill's class (+ 0x0C; 255
+     * for a skill of no class) and its row in `skilldesc.bin` (+ 0x194), whose + 0x07 is the frame
+     * of the class's `*Skillicon.dc6` (`Skillicon.dc6` for no class). 1.13c layouts: 0x23C and
+     * 0x120 bytes a row, after a DWORD count.
+     */
+    fun skillIcon(id: Int): Bitmap? {
+        if (id < 0) return null
+        synchronized(skillIcons) { if (skillIcons.containsKey(id)) return skillIcons[id] }
+        val icon = try {
+            val (skills, descs) = synchronized(skillIcons) {
+                if (!skillTablesRead) {
+                    skillTablesRead = true
+                    val sk = archives.read("data\\global\\excel\\skills.bin")
+                    val sd = archives.read("data\\global\\excel\\skilldesc.bin")
+                    skillTables = if (sk != null && sd != null) sk to sd else null
+                }
+                skillTables
+            } ?: return null
+            val sb = ByteBuffer.wrap(skills).order(ByteOrder.LITTLE_ENDIAN)
+            val db = ByteBuffer.wrap(descs).order(ByteOrder.LITTLE_ENDIAN)
+            if (id >= sb.getInt(0)) return null
+            val rec = 4 + id * SKILL_ROW
+            val cls = skills[rec + 0x0C].toInt() and 0xFF
+            val desc = sb.getShort(rec + 0x194).toInt() and 0xFFFF
+            if (desc >= db.getInt(0)) return null
+            val cel = descs[4 + desc * DESC_ROW + 7].toInt() and 0xFF
+            val file = "data\\global\\ui\\SPELLS\\${CLASS_ICONS.getOrElse(cls) { "" }}Skillicon.dc6"
+            val raw = synchronized(iconFiles) { iconFiles.getOrPut(file) { archives.read(file) } } ?: return null
+            frame(raw, cel, palette)?.first
+        } catch (e: Exception) {
+            Log.w(TAG, "skill icon $id", e)
+            null
+        }
+        synchronized(skillIcons) { skillIcons[id] = icon }
+        return icon
+    }
+
+    private val badgeFrames = HashMap<Int, Bitmap?>()
+
+    /** PD2's controller button picture [index] (A 0, B 1, Y 2, X 3, LB 8, RB 9, LT 12, RT 13), 20 x 20. */
+    fun badge(index: Int): Bitmap? {
+        synchronized(badgeFrames) { if (badgeFrames.containsKey(index)) return badgeFrames[index] }
+        val b = try {
+            archives.read("data\\global\\ui\\CONTROLS\\Controls_Xbox_20.dc6")?.let { frame(it, index, palette)?.first }
+        } catch (_: Exception) { null }
+        synchronized(badgeFrames) { badgeFrames[index] = b }
+        return b
+    }
+
+    /** The resolution add-on's stone (its interface background), first frame; null without it. */
+    val stone: Bitmap? by lazy {
+        try {
+            archives.read("data\\SGD2FreeResolution\\ui\\panel\\D2MRStoneBack.dc6")?.let { frame(it, 0, palette)?.first }
+        } catch (_: Exception) { null }
+    }
+
     /** The picture called [name] (as the item table gives it, without folder or extension). */
     fun get(name: String): Bitmap? {
         if (name.isEmpty()) return null
@@ -105,6 +167,11 @@ internal class ItemPictures private constructor(private val archives: GameArchiv
 
     companion object {
         private const val TAG = "pd2-itempictures"
+        private const val SKILL_ROW = 0x23C
+        private const val DESC_ROW = 0x120
+
+        /** The skill icon files' prefixes by class: Amazon, Sorceress, Necromancer, Paladin, Barbarian, Druid, Assassin. */
+        private val CLASS_ICONS = listOf("Am", "So", "Ne", "Pa", "Ba", "Dr", "As")
 
         /** The pictures from the game in [gameFolder], or null when its archives cannot be read. */
         fun open(gameFolder: File): ItemPictures? {

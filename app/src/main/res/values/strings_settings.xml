@@ -54,6 +54,8 @@
     <string name="settings_pause_in_background">Pause the game in the background</string>
     <string name="settings_pause_in_background_body">When you leave the app or the screen turns off for a few seconds, the game freezes and uses no battery. It goes on where it was when you come back. Save before a long break: Android can still end a frozen app.</string>
     <string name="settings_bottom_hud">Globes and belt on the second screen</string>
+    <string name="settings_top_bar">Skill row on the top screen</string>
+    <string name="settings_top_bar_body">With the second screen\'s globes and belt on: PD2\'s bar between the skill buttons becomes one row of your controller skills and a small stamina gauge, and PD2\'s own skill bar turns off. Applies the next time you press Play.</string>
     <string name="settings_bottom_hud_body">On a device with a second screen, like the AYN Thor, shows your life and mana globes and your belt on it while you play. Tap a belt slot to drink that potion.</string>
     <string name="settings_sound_in_background">Sound in background</string>
     <string name="settings_sound_in_background_body">The game keeps its sound when another app is in front.</string>

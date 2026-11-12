@@ -1052,6 +1052,7 @@ class SessionService : Service() {
             return
         }
         linkSaves()
+        applyTopRow(settings)
         launchSent = sendCommand(
             Command.LaunchGame(
                 DisplaySize(width.toLong(), height.toLong()),
@@ -1138,6 +1139,17 @@ class SessionService : Service() {
      * when it checks it again. The game folder is the one the engine names, else the Launcher's
      * record: the engine names a folder an install starts to use in place only from its next start.
      */
+    /** PD2's own skill bar off while the top screen's row shows the binds instead ([com.pd2launcher.app.soe.TopRow]). */
+    private fun applyTopRow(settings: AppSettings) {
+        val paths = SessionPaths(DeviceCheck.dataDir(this))
+        val folder = _status.value.snapshot?.gameFolder?.path ?: GameFilesProvider.recordedGameFolder(paths)
+        val game = folder?.let(::File) ?: paths.managedGame
+        com.pd2launcher.app.soe.TopRow.applyPd2SkillBar(
+            File(game, "ProjectD2/ProjectDiablo.json"), File(filesDir, "toprow-skillbar-off"),
+            settings.bottomHud && settings.topBar, ::log,
+        )
+    }
+
     private fun linkSaves() {
         val paths = SessionPaths(DeviceCheck.dataDir(this))
         val snapshot = _status.value.snapshot ?: return

@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
@@ -233,6 +234,8 @@ fun GameView(
                         it.customButtons = buttons
                     },
                 )
+                // The top screen's row over PD2's bar, the same size as the game's picture.
+                if (app.bottomHud && app.topBar) TopRowOverlay(Modifier.aspectRatio(screen.width.toFloat() / screen.height))
             }
         }
         if (live) {
@@ -281,6 +284,44 @@ fun GameView(
         }
     }
 }
+
+/**
+ * The top screen's row ([com.pd2launcher.app.soe.TopRow]) over the game's picture, from the
+ * second screen's HUD's newest frame, redrawn [TOP_ROW_MS] apart; only while a character is in the
+ * world and PD2's binds, the pictures and the panel are ready. It takes no touch: the game view
+ * leaves taps on the row alone ([com.pd2launcher.app.soe.TopRow.blocks]).
+ */
+@Composable
+private fun TopRowOverlay(modifier: Modifier) {
+    var tick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(TOP_ROW_MS)
+            tick++
+        }
+    }
+    DisposableEffect(Unit) { onDispose { com.pd2launcher.app.soe.TopRow.shown = false } }
+    androidx.compose.foundation.Canvas(modifier) {
+        if (tick < 0) return@Canvas // read, so the canvas draws again each tick
+        val f = com.pd2launcher.app.soe.BottomHud.latest
+        val binds = f?.binds
+        val pictures = f?.pictures
+        val panel = com.pd2launcher.app.soe.TopRow.panelOrNull()
+        val stats = f?.stats
+        val show = f != null && binds != null && pictures != null && panel != null && stats != null
+        com.pd2launcher.app.soe.TopRow.shown = show
+        if (show) {
+            val stamina = stats!!.all[11]?.let { max -> if (max > 0) (stats.all[10] ?: 0).toFloat() / max else null } ?: 0f
+            com.pd2launcher.app.soe.TopRow.draw(
+                drawContext.canvas.nativeCanvas, com.pd2launcher.app.soe.TopRow.rect(size.width, size.height),
+                panel!!, binds!!, pictures!!, stamina, f!!.run,
+            )
+        }
+    }
+}
+
+/** How often the top screen's row is redrawn: the second screen's HUD's frame rate. */
+private const val TOP_ROW_MS = 66L
 
 /**
  * A controller (a gamepad or joystick device, built in or attached) is there, followed live: a
@@ -368,6 +409,8 @@ private class GameSurface(
     private var pad: PadInput? = null
     private var touch: TouchGestures? = null
     private var touchId = -1
+    /** The touch going on began on the top screen's row ([com.pd2launcher.app.soe.TopRow]). */
+    private var touchOnRow = false
     /** The keyboard keys sent to X as pressed and not yet released (keysyms). */
     private val keysDown = HashSet<Int>()
     private var lastFrameNanos = 0L
@@ -605,6 +648,15 @@ private class GameSurface(
     /** Touch, mapped from this view (the letterboxed X screen) to X screen pixels. */
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (suspended) return true
+        // A touch that starts on the top screen's row is the row's: it reaches nothing under it
+        // (PD2's belt and buttons are hidden there).
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            touchOnRow = com.pd2launcher.app.soe.TopRow.blocks(screenX(event.x), screenY(event.y), screen.width, screen.height)
+        }
+        if (touchOnRow) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) touchOnRow = false
+            return true
+        }
         // A finger may wander this far, in X screen pixels, and still tap.
         val slop = ViewConfiguration.get(context).scaledTouchSlop.toFloat() * screen.width / width.coerceAtLeast(1)
         val gestures = touch ?: input?.let {

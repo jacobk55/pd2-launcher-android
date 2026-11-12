@@ -32,6 +32,7 @@ class GameMemory private constructor(
     @Volatile private var expTable: LongArray? = null
     @Volatile private var itemsTxt: Long = 0L
     @Volatile private var itemTypesTxt: Long = 0L
+    @Volatile private var bindTable: Long = 0L
 
     @Volatile private var closed = false
 
@@ -40,7 +41,7 @@ class GameMemory private constructor(
     // them yet), again every few seconds until found.
     init {
         Thread({
-            while (!closed && (expTable == null || itemsTxt == 0L)) {
+            while (!closed) {
                 try {
                     if (u32(client + PLAYER_UNIT) != 0L) {
                         if (expTable == null) {
@@ -55,15 +56,88 @@ class GameMemory private constructor(
                                 Log.i(TAG, "item type table at ${itemTypesTxt.toString(16)}")
                             }
                         }
+                        // The controller binds move with a new game: looked for again whenever lost.
+                        if (bindTable == 0L) {
+                            bindTable = findBindTable()
+                            if (bindTable != 0L) Log.i(TAG, "controller binds at ${bindTable.toString(16)}: ${binds()?.toList()}")
+                        }
                     }
                 } catch (e: Exception) {
                     Log.w(TAG, "table search", e)
                 }
-                if (expTable == null || itemsTxt == 0L) {
-                    try { Thread.sleep(5000) } catch (_: InterruptedException) { return@Thread }
-                }
+                try { Thread.sleep(5000) } catch (_: InterruptedException) { return@Thread }
             }
         }, "pd2-gamememory-search").apply { isDaemon = true }.start()
+    }
+
+    /**
+     * PD2's controller skill binds (its Hotkeys tab), in the order A, B, Y, X, RB, LT+A, LT+B,
+     * LT+Y, LT+X, LT+RB: each a skill id, or -1 for none. Null until PD2's table is found, or when
+     * it is gone (then it is looked for again). The table: ten 8-byte entries, each a WORD skill
+     * (0xFFFF for none), a WORD flag (0 or 1) and 0xFFFFFFFF.
+     */
+    fun binds(): IntArray? {
+        val table = bindTable
+        if (table == 0L) return null
+        return try {
+            val b = readBytes(table, BIND_ENTRIES * BIND_ENTRY)
+            if (!bindsLookRight(b, 0)) {
+                bindTable = 0L
+                null
+            } else {
+                IntArray(BIND_ENTRIES) { i ->
+                    val skill = (b[i * BIND_ENTRY].toInt() and 0xFF) or ((b[i * BIND_ENTRY + 1].toInt() and 0xFF) shl 8)
+                    if (skill == 0xFFFF) -1 else skill
+                }
+            }
+        } catch (_: Exception) {
+            bindTable = 0L
+            null
+        }
+    }
+
+    /** Whether [b] at [at] holds a bind table as PD2 keeps it, with at least one skill bound. */
+    private fun bindsLookRight(b: ByteArray, at: Int): Boolean {
+        if (at + BIND_ENTRIES * BIND_ENTRY > b.size) return false
+        var bound = 0
+        var first = -2
+        var same = true
+        for (i in 0 until BIND_ENTRIES) {
+            val e = at + i * BIND_ENTRY
+            for (k in 4 until 8) if (b[e + k] != 0xFF.toByte()) return false
+            val skill = (b[e].toInt() and 0xFF) or ((b[e + 1].toInt() and 0xFF) shl 8)
+            val flag = (b[e + 2].toInt() and 0xFF) or ((b[e + 3].toInt() and 0xFF) shl 8)
+            if (flag > 1 || (skill != 0xFFFF && skill > 1024)) return false
+            if (skill != 0xFFFF) bound++
+            if (first == -2) first = skill else if (skill != first) same = false
+        }
+        return bound > 0 && !same
+    }
+
+    /** PD2's bind table in the game's writable memory (see [binds]), or 0. */
+    private fun findBindTable(): Long {
+        val ff = 0xFF.toByte()
+        for ((start, end) in writableRegions()) {
+            if (end - start > 64L shl 20) continue
+            var at = start
+            val chunk = 1 shl 20
+            val span = BIND_ENTRIES * BIND_ENTRY
+            while (at < end) {
+                val n = minOf(chunk.toLong() + span, end - at).toInt()
+                val bytes = try { readBytes(at, n) } catch (_: Exception) { break }
+                var i = 0
+                while (i + span <= bytes.size) {
+                    if (bytes[i + 4] == ff && bytes[i + 5] == ff && bytes[i + 6] == ff && bytes[i + 7] == ff &&
+                        bytes[i + 12] == ff && bytes[i + 13] == ff && bindsLookRight(bytes, i)
+                    ) {
+                        return at + i
+                    }
+                    i += 2
+                }
+                at += chunk
+            }
+        }
+        return 0L
     }
 
     /** An item in the inventory: its grid place and size, and its picture's file name. */
@@ -368,6 +442,8 @@ class GameMemory private constructor(
         private const val ROW = 32L
         private const val ITEM_ROW = 0x1A8L
         private const val TYPE_ROW = 0xE4L
+        const val BIND_ENTRIES = 10
+        private const val BIND_ENTRY = 8
 
         /** Stats that can go below zero: the resistances. */
         private val SIGNED = setOf(39, 41, 43, 45)

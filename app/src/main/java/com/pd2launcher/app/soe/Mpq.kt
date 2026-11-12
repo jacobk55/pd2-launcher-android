@@ -281,6 +281,8 @@ internal class GameArchives(private val mpqs: List<Mpq>) : AutoCloseable {
         private val ORDER = listOf(
             "ProjectD2/pd2data.mpq", "ProjectD2/pd2assets.mpq", "ProjectD2/patch_d2.mpq",
             "patch_d2.mpq", "Patch_D2.mpq", "d2exp.mpq", "d2data.mpq",
+            // The resolution add-on's own pictures (its interface stone), nothing the game's files have.
+            "ProjectD2/SGD2FreeRes.mpq",
         )
 
         fun open(gameFolder: File): GameArchives? {
