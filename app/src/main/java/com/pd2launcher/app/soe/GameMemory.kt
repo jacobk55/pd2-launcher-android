@@ -31,18 +31,37 @@ class GameMemory private constructor(
     private val mem = RandomAccessFile("/proc/$pid/mem", "r")
     @Volatile private var expTable: LongArray? = null
     @Volatile private var itemsTxt: Long = 0L
+    @Volatile private var itemTypesTxt: Long = 0L
 
-    // The tables are looked for once, away from the HUD's frames: a search reads the game's
-    // writable memory and can take a while.
+    @Volatile private var closed = false
+
+    // The tables are looked for away from the HUD's frames (a search reads the game's writable
+    // memory and can take a while), once a character is in the game (the menus have not loaded
+    // them yet), again every few seconds until found.
     init {
         Thread({
-            try {
-                expTable = findExperienceTable()
-                Log.i(TAG, "experience table: ${expTable?.take(5)}")
-                itemsTxt = findItemsTxt()
-                Log.i(TAG, "item table at ${itemsTxt.toString(16)}")
-            } catch (e: Exception) {
-                Log.w(TAG, "table search", e)
+            while (!closed && (expTable == null || itemsTxt == 0L)) {
+                try {
+                    if (u32(client + PLAYER_UNIT) != 0L) {
+                        if (expTable == null) {
+                            expTable = findExperienceTable()
+                            Log.i(TAG, "experience table: ${expTable?.take(5)}")
+                        }
+                        if (itemsTxt == 0L) {
+                            itemsTxt = findItemsTxt()
+                            Log.i(TAG, "item table at ${itemsTxt.toString(16)}")
+                            if (itemsTxt != 0L) {
+                                itemTypesTxt = findItemTypesTxt(itemsTxt)
+                                Log.i(TAG, "item type table at ${itemTypesTxt.toString(16)}")
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "table search", e)
+                }
+                if (expTable == null || itemsTxt == 0L) {
+                    try { Thread.sleep(5000) } catch (_: InterruptedException) { return@Thread }
+                }
             }
         }, "pd2-gamememory-search").apply { isDaemon = true }.start()
     }
@@ -74,7 +93,7 @@ class GameMemory private constructor(
                     val rec = readBytes(table + txt * ITEM_ROW, ITEM_ROW.toInt())
                     val quality = u32(data)
                     val path = u32(item + 0x2C)
-                    val base = cstr(rec, 0x20)
+                    val base = variant(rec, readBytes(data + 0x49, 1)[0].toInt() and 0xFF) ?: cstr(rec, 0x20)
                     val special = when (quality) {
                         7L -> cstr(rec, 0x40)
                         5L -> cstr(rec, 0x60)
@@ -99,6 +118,44 @@ class GameMemory private constructor(
         var end = at
         while (end < at + 32 && b[end] != 0.toByte()) end++
         return String(b, at, end - at, Charsets.ISO_8859_1)
+    }
+
+    /**
+     * The picture variant an item of [rec]'s type shows (charms, rings, amulets, jewels have
+     * several; the item keeps which at its data + 0x49), or null when its type has none: the
+     * type (a WORD at + 0x11E) indexes the item type table, whose 0xE4-byte records list up to
+     * six picture names of 32 bytes from + 0x24.
+     */
+    private fun variant(rec: ByteArray, index: Int): String? {
+        val types = itemTypesTxt
+        if (types == 0L) return null
+        val type = (rec[0x11E].toInt() and 0xFF) or ((rec[0x11F].toInt() and 0xFF) shl 8)
+        if (type >= 1024) return null
+        val t = readBytes(types + type * TYPE_ROW + 0x24, 6 * 32)
+        val names = (0 until 6).map { cstr(t, it * 32) }.filter { it.isNotEmpty() }
+        return if (names.isEmpty()) null else names[index % names.size]
+    }
+
+    /**
+     * The item type table: the small charm's type ("scha", its pictures "invch1" ...) is the
+     * charm item "cm1"'s type, so the table starts that many records before it.
+     */
+    private fun findItemTypesTxt(items: Long): Long {
+        var cm1Type = -1
+        for (i in 0 until 2048) {
+            val code = readBytes(items + i * ITEM_ROW + 0x80, 4)
+            if (code[0] == 0.toByte()) break
+            if (String(code, Charsets.ISO_8859_1) == "cm1 ") {
+                val w = readBytes(items + i * ITEM_ROW + 0x11E, 2)
+                cm1Type = (w[0].toInt() and 0xFF) or ((w[1].toInt() and 0xFF) shl 8)
+                break
+            }
+        }
+        if (cm1Type < 0) return 0L
+        val needle = byteArrayOf('i'.code.toByte(), 'n'.code.toByte(), 'v'.code.toByte(), 'c'.code.toByte(), 'h'.code.toByte(), '1'.code.toByte(), 0)
+        val scha = "scha".toByteArray(Charsets.ISO_8859_1)
+        val hit = scan(needle) { at -> readBytes(at - 0x24, 4).contentEquals(scha) } ?: return 0L
+        return hit - 0x24 - cm1Type * TYPE_ROW
     }
 
     /** The item table: found by its minor healing potion's record ("invhp1" and code "hp1 "). */
@@ -184,7 +241,10 @@ class GameMemory private constructor(
         return out.toIntArray()
     }
 
-    fun close() = try { mem.close() } catch (_: Exception) {}
+    fun close() {
+        closed = true
+        try { mem.close() } catch (_: Exception) {}
+    }
 
     /** Whether the game process is still there. */
     val alive: Boolean get() = File("/proc/$pid").exists()
@@ -304,6 +364,7 @@ class GameMemory private constructor(
         private const val MAX_CELLS = 30000
         private const val ROW = 32L
         private const val ITEM_ROW = 0x1A8L
+        private const val TYPE_ROW = 0xE4L
 
         /** Stats that can go below zero: the resistances. */
         private val SIGNED = setOf(39, 41, 43, 45)
