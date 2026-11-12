@@ -314,6 +314,7 @@ private fun TopRowOverlay(modifier: Modifier) {
             val stamina = stats!!.all[11]?.let { max -> if (max > 0) (stats.all[10] ?: 0).toFloat() / max else null } ?: 0f
             com.pd2launcher.app.soe.TopRow.draw(
                 drawContext.canvas.nativeCanvas, com.pd2launcher.app.soe.TopRow.rect(size.width, size.height),
+                com.pd2launcher.app.soe.TopRow.crestRect(size.width, size.height),
                 panel!!, binds!!, pictures!!, stamina, f!!.run,
             )
         }

@@ -50,6 +50,9 @@ android {
         buildConfigField("String", "UPDATE_RELEASES", "\"https://github.com/Pocketward/pd2-launcher-android/releases/\"")
         buildConfigField("String", "UPDATE_APK_PREFIX", "\"pd2-launcher-android-\"")
         buildConfigField("String", "UPDATE_CERTIFICATE", "\"90b7d9adf3f0c2c1bac5351f8cc972c9f984704c181f03f8cc206d2711a2972d\"")
+        // The launcher icon (the manifest's): the app's own, unless an edition below has another.
+        manifestPlaceholders["appIcon"] = "@mipmap/ic_launcher"
+        manifestPlaceholders["appRoundIcon"] = "@mipmap/ic_launcher_round"
     }
 
     compileOptions {
@@ -91,11 +94,20 @@ android {
     // com.pd2launcher.app.pd2test, on display :4: a test edition beside every other build, with
     // the second-screen HUD on by default.
     val pd2Test = providers.gradleProperty("pd2.test").map { it.toBoolean() }.getOrElse(false)
-    val devName = if (pd2Test) "PD2Test" else if (soe) "SoE Launcher" else if (asFexDev) "PD2 Launcher Dev" else "PD2 Launcher Dev 0.3"
+    // With pd2.d2ds=true (build.sh: PD2_D2DS=1) the debug build is "D2DS",
+    // com.pd2launcher.app.d2ds, on display :5: PD2Test as an app of its own for the player's
+    // Thor, with its own launcher picture (ic_d2ds, a stand-in here: the player's picture goes in
+    // on their own computer, never into this repository).
+    val d2ds = providers.gradleProperty("pd2.d2ds").map { it.toBoolean() }.getOrElse(false)
+    val devName = if (d2ds) "D2DS" else if (pd2Test) "PD2Test" else if (soe) "SoE Launcher" else if (asFexDev) "PD2 Launcher Dev" else "PD2 Launcher Dev 0.3"
     buildTypes {
         getByName("debug") {
-            applicationIdSuffix = if (pd2Test) ".pd2test" else if (soe) ".soe" else if (asFexDev) ".dev" else ".dev3"
-            buildConfigField("String", "X_DISPLAY", if (pd2Test) "\":4\"" else if (soe) "\":3\"" else if (asFexDev) "\":1\"" else "\":2\"")
+            applicationIdSuffix = if (d2ds) ".d2ds" else if (pd2Test) ".pd2test" else if (soe) ".soe" else if (asFexDev) ".dev" else ".dev3"
+            buildConfigField("String", "X_DISPLAY", if (d2ds) "\":5\"" else if (pd2Test) "\":4\"" else if (soe) "\":3\"" else if (asFexDev) "\":1\"" else "\":2\"")
+            if (d2ds) {
+                manifestPlaceholders["appIcon"] = "@drawable/ic_d2ds"
+                manifestPlaceholders["appRoundIcon"] = "@drawable/ic_d2ds"
+            }
             resValue("string", "app_name", devName)
             resValue("string", "files_root_title", devName)
         }

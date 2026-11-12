@@ -93,6 +93,17 @@ jobs:
           [[ -f "$RUNNER_TEMP/keys/pd2test.keystore" ]] && mv "$RUNNER_TEMP/keys/pd2test.keystore" ~/.cache/pd2-android/debug.keystore || true
           [[ -f "$RUNNER_TEMP/pd2test.apk" ]] && mkdir -p build/outputs && cp "$RUNNER_TEMP/pd2test.apk" build/outputs/app-debug.apk || true
 
+      # D2DS (com.pd2launcher.app.d2ds): the same app as its own edition, its launcher picture a
+      # stand-in that the player replaces on their own computer (and signs there). PD2Test's
+      # APK is put back after.
+      - name: D2DS
+        run: |
+          set -euo pipefail
+          PD2_D2DS=1 ./build.sh app
+          cp build/outputs/app-debug.apk D2DS-base.apk
+          sha256sum D2DS-base.apk > D2DS-base.apk.sha256
+          cp "$RUNNER_TEMP/pd2test.apk" build/outputs/app-debug.apk
+
       - name: Pre-release with the APK
         env:
           GH_TOKEN: ${{ github.token }}
@@ -103,5 +114,6 @@ jobs:
           sha256sum PD2Test.apk > PD2Test.apk.sha256
           files="PD2Test.apk PD2Test.apk.sha256"
           [[ -f SoE-HUD.apk ]] && files="$files SoE-HUD.apk SoE-HUD.apk.sha256"
+          [[ -f D2DS-base.apk ]] && files="$files D2DS-base.apk D2DS-base.apk.sha256"
           gh release create "$tag" $files --prerelease --target "${{ github.sha }}" \
             --title "PD2Test ${{ github.run_number }}" --notes "Second-screen HUD test build from ${{ github.sha }}."

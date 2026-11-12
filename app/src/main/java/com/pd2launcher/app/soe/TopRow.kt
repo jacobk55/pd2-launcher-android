@@ -53,9 +53,29 @@ object TopRow {
         return RectF(world.left + PIC_LEFT * sx, world.top + PIC_TOP * sy, world.left + PIC_RIGHT * sx, world.bottom)
     }
 
-    /** Whether a touch at [x], [y] on a [width] x [height] X screen lands on the shown row. */
-    fun blocks(x: Int, y: Int, width: Int, height: Int): Boolean =
-        shown && rect(width.toFloat(), height.toFloat()).contains(x.toFloat(), y.toFloat())
+    /**
+     * The crest over the spot where PD2 draws its own controller skill bar once a controller is
+     * used (right above the row, over the scene): the row shows the binds, so that bar is covered.
+     */
+    private const val CREST_LEFT = 781.5f
+    private const val CREST_RIGHT = 954.5f
+    private const val CREST_TOP = 521.7f
+
+    /** The crest on a [width] x [height] X screen (or a view showing one), in its pixels. */
+    fun crestRect(width: Float, height: Float): RectF {
+        val world = ControlsLayout.worldPicture(width, height)
+        val sx = world.width / PIC_W
+        val sy = world.height / PIC_H
+        return RectF(world.left + CREST_LEFT * sx, world.top + CREST_TOP * sy, world.left + CREST_RIGHT * sx, world.top + (PIC_TOP + 1f) * sy)
+    }
+
+    /** Whether a touch at [x], [y] on a [width] x [height] X screen lands on the shown row or its crest. */
+    fun blocks(x: Int, y: Int, width: Int, height: Int): Boolean {
+        if (!shown) return false
+        val w = width.toFloat()
+        val h = height.toFloat()
+        return rect(w, h).contains(x.toFloat(), y.toFloat()) || crestRect(w, h).contains(x.toFloat(), y.toFloat())
+    }
 
     // ---------------------------------------------------------------- layout, in panel pixels
 
@@ -92,6 +112,7 @@ object TopRow {
     // ---------------------------------------------------------------- the panel
 
     @Volatile private var panel: Bitmap? = null
+    @Volatile private var crest: Bitmap? = null
     private var panelTried = false
 
     /** The panel if it is made already ([art]); never makes it. */
@@ -165,6 +186,39 @@ object TopRow {
         c.drawBitmap(divider, (areaL - divider.width / 2f).roundToInt().toFloat(), BORDER_TOP.toFloat(), p)
         c.drawBitmap(divider, (areaR - divider.width / 2f).roundToInt().toFloat(), BORDER_TOP.toFloat(), p)
         c.drawBitmap(feathered(stam, 6, BORDER_TOP, BORDER_BOT), stamX.toFloat(), 0f, p)
+        crest = composeCrest(out, stam)
+        return out
+    }
+
+    /**
+     * The crest: plain stone from the panel's own (a stretch of it with no socket), the pieces' gold
+     * border along its top and both sides, open at the bottom where it meets the row. Its size in
+     * the panel's pixels is the crest's share of the picture at the row's scale.
+     */
+    private fun composeCrest(panel: Bitmap, stam: Bitmap): Bitmap {
+        val perUnit = ROW_H / (PIC_H - PIC_TOP)
+        val w = ((CREST_RIGHT - CREST_LEFT) * perUnit).roundToInt()
+        val h = ((PIC_TOP - CREST_TOP + 1f) * perUnit).roundToInt()
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(out)
+        // Stone: the stamina module's plain stone (between its gauge and its end), tiled.
+        val plain = Bitmap.createBitmap(stam, 170, BORDER_TOP, 40, BORDER_BOT - BORDER_TOP)
+        var x = 0
+        while (x < w) {
+            var y = 0
+            while (y < h) {
+                c.drawBitmap(plain, x.toFloat(), y.toFloat(), null)
+                y += plain.height
+            }
+            x += plain.width
+        }
+        // The gold border: the pieces' top border along the top, the same turned down both sides.
+        c.drawBitmap(stam, android.graphics.Rect(100, 0, 101, BORDER_TOP), RectF(0f, 0f, w.toFloat(), BORDER_TOP.toFloat()), null)
+        val side = Bitmap.createBitmap(stam, 100, 0, 1, BORDER_TOP)
+        val m = android.graphics.Matrix().apply { postRotate(-90f) }
+        val turned = Bitmap.createBitmap(side, 0, 0, side.width, side.height, m, true)
+        c.drawBitmap(turned, null, RectF(0f, 0f, BORDER_TOP.toFloat(), h.toFloat()), null)
+        c.drawBitmap(turned, null, RectF((w - BORDER_TOP).toFloat(), 0f, w.toFloat(), h.toFloat()), null)
         return out
     }
 
@@ -223,7 +277,12 @@ object TopRow {
      * The row into [into] on [canvas]: the [panel], each bound skill's icon and badges
      * ([binds]: skill ids, -1 unbound), the [run] button and the [stamina] gauge (0 to 1).
      */
-    internal fun draw(canvas: Canvas, into: RectF, panel: Bitmap, binds: IntArray, pictures: ItemPictures, stamina: Float, run: Bitmap?) {
+    internal fun draw(
+        canvas: Canvas, into: RectF, crestInto: RectF?, panel: Bitmap, binds: IntArray, pictures: ItemPictures,
+        stamina: Float, run: Bitmap?,
+    ) {
+        val c = crest
+        if (crestInto != null && c != null) canvas.drawBitmap(c, null, crestInto, smooth)
         canvas.save()
         canvas.translate(into.left, into.top)
         canvas.scale(into.width() / ROW_W, into.height() / ROW_H)
