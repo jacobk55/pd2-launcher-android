@@ -75,6 +75,9 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
     companion object {
         private const val TAG = "pd2-bottomhud"
         const val FPS = 15
+
+        /** How often the HUD looks whether its screen is on again while it is off. */
+        private const val OFF_POLL_MS = 500L
         internal const val PICTURE_WIDTH = 1068f
         internal const val PICTURE_HEIGHT = 600f
         const val SLOTS = 4
@@ -219,6 +222,16 @@ class BottomHud private constructor(private val presentation: HudPresentation) {
             var inventoryRead = 0L
             var warmed: GameMemory.Automap? = null
             while (running) {
+                // With the screens off (lid closed, power button) there is nothing to show: no
+                // reading of the picture or the game's memory until they are on again.
+                if (display.state != Display.STATE_ON) {
+                    try {
+                        Thread.sleep(OFF_POLL_MS)
+                    } catch (_: InterruptedException) {
+                        return
+                    }
+                    continue
+                }
                 val started = System.nanoTime()
                 try {
                     if (pixels == null) pixels = framebuffer.map()
