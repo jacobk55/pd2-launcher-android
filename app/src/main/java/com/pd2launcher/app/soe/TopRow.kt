@@ -149,12 +149,14 @@ object TopRow {
         val p = Paint(Paint.FILTER_BITMAP_FLAG)
 
         // The stone: the game's, at the bar's scale, toned to the pieces' grey; or the pieces' own plain stone.
+        var plainStone: Bitmap? = null
         if (stone != null) {
             // The bar's scale (X screen pixels per picture pixel) in the pieces' pixels (87 screen pixels to their 96).
             val k = (1920f / 1068f) / (87f / 96f)
             val tile = Bitmap.createScaledBitmap(stone, (stone.width * k).roundToInt(), (stone.height * k).roundToInt(), true)
             val strip = Bitmap.createBitmap(tile, 0, 40.coerceAtMost(tile.height - ROW_H), tile.width, ROW_H)
             toned(strip, stam)
+            plainStone = strip
             var x = 0
             while (x < ROW_W) {
                 c.drawBitmap(strip, x.toFloat(), 0f, null)
@@ -186,23 +188,23 @@ object TopRow {
         c.drawBitmap(divider, (areaL - divider.width / 2f).roundToInt().toFloat(), BORDER_TOP.toFloat(), p)
         c.drawBitmap(divider, (areaR - divider.width / 2f).roundToInt().toFloat(), BORDER_TOP.toFloat(), p)
         c.drawBitmap(feathered(stam, 6, BORDER_TOP, BORDER_BOT), stamX.toFloat(), 0f, p)
-        crest = composeCrest(out, stam)
+        crest = composeCrest(plainStone, stam)
         return out
     }
 
     /**
-     * The crest: plain stone from the panel's own (a stretch of it with no socket), the pieces' gold
+     * The crest: the row's plain stone, the pieces' gold
      * border along its top and both sides, open at the bottom where it meets the row. Its size in
      * the panel's pixels is the crest's share of the picture at the row's scale.
      */
-    private fun composeCrest(panel: Bitmap, stam: Bitmap): Bitmap {
+    private fun composeCrest(stone: Bitmap?, stam: Bitmap): Bitmap {
         val perUnit = ROW_H / (PIC_H - PIC_TOP)
         val w = ((CREST_RIGHT - CREST_LEFT) * perUnit).roundToInt()
         val h = ((PIC_TOP - CREST_TOP + 1f) * perUnit).roundToInt()
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(out)
-        // Stone: the stamina module's plain stone (between its gauge and its end), tiled.
-        val plain = Bitmap.createBitmap(stam, 170, BORDER_TOP, 40, BORDER_BOT - BORDER_TOP)
+        // Stone: the row's own toned stone (or, without the game's, the stamina module's plain corner), tiled.
+        val plain = stone ?: Bitmap.createBitmap(stam, 210, BORDER_TOP, 8, BORDER_BOT - BORDER_TOP)
         var x = 0
         while (x < w) {
             var y = 0
